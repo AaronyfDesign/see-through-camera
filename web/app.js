@@ -5,8 +5,16 @@
  *   (portrait: rotate visual-CCW, grip up; quad remap) -> screen paste
  *   (cover-crop, square corners) -> two centered text lines -> JPEG.
  *
- * Hard-error discipline (S10/S11): a missing EXIF field is an error, never
- * silently defaulted.
+ * Mobile compatibility:
+ *   - decode via <img> + object URL (createImageBitmap+options is missing on
+ *     older iOS); browsers apply EXIF orientation when drawing <img>
+ *   - ctx.filter is unsupported on iOS Safari < 18: blur falls back to
+ *     downscale/upscale, brightness to overlay fills (query ?legacy=1 forces
+ *     the fallback on desktop for testing)
+ *
+ * EXIF policy: never guess. Fields that fail to parse are simply left out of
+ * the card; a missing model shows a warning and the selected body's label
+ * stands in on the card (the user chose that body).
  */
 'use strict';
 
@@ -32,6 +40,13 @@ const BODIES = [
   { key: 'zfc', label: 'Z fc',   profile: null, ready: false, tip: '标定中' },
 ];
 
+const FILTER_OK = (() => {
+  const c = document.createElement('canvas').getContext('2d');
+  return !new URLSearchParams(location.search).has('legacy') &&
+         typeof c.filter === 'string' &&
+         (c.filter = 'blur(1px)', c.filter === 'blur(1px)');
+})();
+
 // ---------- state ----------
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -40,31 +55,28 @@ const els = {
   bodySeg: $('bodySeg'), repick: $('repick'), save: $('save'),
 };
 let state = {
-  file: null,        // File object
-  bitmap: null,      // ImageBitmap, already orientation-normalized
-  exif: null,        // parsed EXIF subset
+  file: null,        // picked File
+  img: null,         // HTMLImageElement, orientation-normalized by the browser
+  params: null,      // partial: any of model/lens/focal/expo/fnum/iso
   bodyKey: 'z63',    // user-selected body (default z63)
   card: null,        // rendered canvas
 };
 
-// ---------- EXIF ----------
-async function readExif(file) {
-  const tags = await exifr.parse(file, {
-    pick: ['Model', 'FocalLength', 'FNumber', 'ExposureTime', 'ISO', 'LensModel'],
-  });
-  const need = (v, name) => {
-    if (v === undefined || v === null) {
-      throw new Error(`这张照片缺少拍摄参数（${name}），无法生成卡片`);
-    }
-    return v;
-  };
+// ---------- EXIF (partial-tolerant) ----------
+async function readParams(file) {
+  let tags = null;
+  try {
+    tags = await exifr.parse(file, {
+      pick: ['Model', 'FocalLength', 'FNumber', 'ExposureTime', 'ISO', 'LensModel'],
+    });
+  } catch { /* unreadable EXIF -> all fields empty */ }
   return {
-    model: String(need(tags.Model, '机型')).trim(),
-    focal: need(tags.FocalLength, '焦距'),
-    fnum: need(tags.FNumber, '光圈'),
-    expo: need(tags.ExposureTime, '快门'),
-    iso: need(tags.ISO, 'ISO'),
-    lens: tags.LensModel ? String(tags.LensModel).trim() : '',
+    model: tags && tags.Model ? String(tags.Model).trim() : '',
+    lens: tags && tags.LensModel ? String(tags.LensModel).trim() : '',
+    focal: tags && isFinite(Number(tags.FocalLength)) ? Number(tags.FocalLength) : NaN,
+    fnum: tags && isFinite(Number(tags.FNumber)) ? Number(tags.FNumber) : NaN,
+    expo: tags && isFinite(Number(tags.ExposureTime)) ? Number(tags.ExposureTime) : NaN,
+    iso: tags && Number(tags.ISO) > 0 ? Number(tags.ISO) : NaN,
   };
 }
 
@@ -73,8 +85,7 @@ function fmtShutter(sec) {
   return `1/${Math.round(1 / sec)} s`;
 }
 function trimNum(n) {
-  // :g-equivalent — cut float noise without losing precision
-  return String(parseFloat(n.toPrecision(6)));
+  return String(parseFloat(Number(n).toPrecision(6)));
 }
 
 // ---------- geometry helpers ----------
@@ -90,20 +101,29 @@ function drawCover(ctx, img, x, y, w, h) {
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
-// cover variant with overscan so the blur filter never reveals raw edges
-// (Python blurs an already-cropped bitmap whose edge pixels extend; canvas
-// 2D blur fades to transparent at the drawn image boundary instead)
-function drawCoverOverscan(ctx, img, w, h, margin) {
-  const x = -margin, y = -margin, bw = w + margin * 2, bh = h + margin * 2;
-  const s = Math.max(bw / img.width, bh / img.height);
-  const dw = img.width * s, dh = img.height * s;
-  ctx.drawImage(img, x + (bw - dw) / 2, y + (bh - dh) / 2, dw, dh);
+// blur fallback for browsers without ctx.filter: shrink hard, then stretch
+// back with high-quality smoothing (two passes approximate a gaussian)
+function drawCoverBlurFallback(ctx, img, w, h) {
+  const k = 12;
+  const sw = Math.max(8, Math.round(w / k)), sh = Math.max(8, Math.round(h / k));
+  const off = document.createElement('canvas');
+  off.width = sw; off.height = sh;
+  const octx = off.getContext('2d');
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
+  const s0 = Math.max(sw / img.width, sh / img.height);
+  octx.drawImage(img, (sw - img.width * s0) / 2, (sh - img.height * s0) / 2,
+                 img.width * s0, img.height * s0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(off, 0, 0, w + 40, h + 40);
+  ctx.drawImage(off, -8, -8, w + 16, h + 16);
 }
 
 // ---------- pipeline ----------
 async function loadBody(profileUrl) {
   const prof = await (await fetch(profileUrl)).json();
-  const base = new URL(profileUrl, location.href); // profile.json absolute URL
+  const base = new URL(profileUrl, location.href);
   const png = await new Promise((ok, no) => {
     const im = new Image();
     im.onload = () => ok(im);
@@ -114,24 +134,28 @@ async function loadBody(profileUrl) {
 }
 
 async function render() {
-  const { bitmap, exif } = state;
+  const { img, params } = state;
   const body = await loadBody(BODIES.find(b => b.key === state.bodyKey).profile);
 
-  const { w: cw, h: ch } = canvasSize(bitmap.width, bitmap.height);
+  const { w: cw, h: ch } = canvasSize(img.naturalWidth, img.naturalHeight);
   const card = document.createElement('canvas');
   card.width = cw; card.height = ch;
   const ctx = card.getContext('2d');
 
   // 1. background: cover + blur + darken
-  ctx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
-  drawCoverOverscan(ctx, bitmap, cw, ch, Math.ceil(cw * BG_BLUR_FRAC * 3));
-  ctx.filter = 'none';
+  if (FILTER_OK) {
+    ctx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
+    drawCoverOverscan(ctx, img, cw, ch, Math.ceil(cw * BG_BLUR_FRAC * 3));
+    ctx.filter = 'none';
+  } else {
+    drawCoverBlurFallback(ctx, img, cw, ch);
+  }
   ctx.fillStyle = `rgba(0,0,0,${1 - BG_DARKEN})`;
   ctx.fillRect(0, 0, cw, ch);
 
   // 2. body layer; portrait: rotate visual-CCW (grip up), remap quad
   let quad = body.prof.screen_quad.map(p => p.slice());
-  let bw0 = body.png.width, bh0 = body.png.height;
+  const bw0 = body.png.width, bh0 = body.png.height;
   const portrait = ch >= cw;
   const drawn = document.createElement('canvas');
   const dctx = drawn.getContext('2d');
@@ -164,20 +188,35 @@ async function render() {
   ctx.beginPath();
   ctx.rect(left, top, qw, qh);
   ctx.clip();
-  ctx.filter = `brightness(${SCREEN_BRIGHTEN})`;
-  drawCover(ctx, bitmap, left, top, qw, qh);
+  if (FILTER_OK) {
+    ctx.filter = `brightness(${SCREEN_BRIGHTEN})`;
+    drawCover(ctx, img, left, top, qw, qh);
+  } else {
+    drawCover(ctx, img, left, top, qw, qh);
+    ctx.fillStyle = `rgba(255,255,255,${SCREEN_BRIGHTEN - 1})`;
+    ctx.fillRect(left, top, qw, qh);
+  }
   ctx.restore();
 
-  // 4. text lines, centered below body, auto-shrink on overflow
-  const lensPart = exif.lens ? ` · ${exif.lens}` : '';
-  const line1 = `${exif.model}${lensPart}`;
-  const line2 = `${trimNum(exif.focal)} mm · ${fmtShutter(exif.expo)} · ` +
-                `f/${trimNum(exif.fnum)} · ISO ${exif.iso}`;
+  // 4. caption lines, pinned to the card bottom, auto-shrink on overflow;
+  //    unparsed fields are simply left out
+  const bodyLabel = BODIES.find(b => b.key === state.bodyKey).label;
+  const parts1 = [];
+  if (params.model) parts1.push(params.model);
+  if (params.lens) parts1.push(params.lens);
+  const line1 = parts1.join(' · ') || `NIKON ${bodyLabel}`;
+  const parts2 = [];
+  if (isFinite(params.focal)) parts2.push(`${trimNum(params.focal)} mm`);
+  if (isFinite(params.expo)) parts2.push(fmtShutter(params.expo));
+  if (isFinite(params.fnum)) parts2.push(`f/${trimNum(params.fnum)}`);
+  if (isFinite(params.iso)) parts2.push(`ISO ${Math.round(params.iso)}`);
+  const lines = [line1, parts2.join(' · ')].filter(Boolean);
   ctx.textBaseline = 'alphabetic';
-  let y = ch - 24 - LINE2_SIZE - GAP_LINE;  // pinned to card bottom
+  let y = ch - 24 - LINE2_SIZE - GAP_LINE * (lines.length - 1);  // bottom-pinned
   const maxTextW = cw - 48;
-  for (const [text, size, font] of [[line1, LINE1_SIZE, FONT_SANS],
-                                    [line2, LINE2_SIZE, FONT_MONO]]) {
+  for (const [text, size, font] of lines.map((t, i) =>
+      [t, i === lines.length - 1 ? LINE2_SIZE : LINE1_SIZE,
+       i === lines.length - 1 ? FONT_MONO : FONT_SANS])) {
     let sizeFit = size;
     ctx.font = `${sizeFit}px ${font}`;
     while (ctx.measureText(text).width > maxTextW && sizeFit > 14) {
@@ -194,6 +233,14 @@ async function render() {
   els.preview.src = card.toDataURL('image/jpeg', 0.93);
 }
 
+// cover variant with overscan so the blur filter never reveals raw edges
+function drawCoverOverscan(ctx, img, w, h, margin) {
+  const x = -margin, y = -margin, bw = w + margin * 2, bh = h + margin * 2;
+  const s = Math.max(bw / img.width, bh / img.height);
+  const dw = img.width * s, dh = img.height * s;
+  ctx.drawImage(img, x + (bw - dw) / 2, y + (bh - dh) / 2, dw, dh);
+}
+
 // ---------- errors ----------
 function showError(msg) {
   els.err.textContent = msg;
@@ -204,28 +251,52 @@ function clearError() {
 }
 
 // ---------- flow ----------
+async function decodeImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => {
+      const im = new Image();
+      im.onload = () => ok(im);
+      im.onerror = () => no(new Error('这张照片浏览器解不开，请用 JPG 再试'));
+      im.src = url;
+    });
+    return img;
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+}
+
 async function handleFile(file) {
   if (!file) return;
-  if (!/image\/jpeg/i.test(file.type)) {
-    showError('目前支持 JPEG 照片');
-    return;
-  }
   clearError();
   try {
-    const exif = await readExif(file);
-    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
     state.file = file;
-    state.exif = exif;
-    state.bitmap = bitmap;
+    state.img = await decodeImage(file);
+    const p = await readParams(file);
+    state.params = p;
 
-    // auto-match body by EXIF model; fall back to current selection
-    await refreshProfileAliases();
-    const matched = BODIES.find(b => b.ready && (b.aliases || []).includes(exif.model));
-    if (matched) {
-      state.bodyKey = matched.key;
-      syncSeg();
+    const notices = [];
+    if (!p.model) notices.push('未解析到机型信息，卡片将显示当前选中的机身');
+    if (!isFinite(p.focal) && !isFinite(p.expo) &&
+        !isFinite(p.fnum) && !isFinite(p.iso)) {
+      notices.push('未解析到拍摄参数，参数行将留空（常见于聊天软件传输的照片）');
     } else {
-      showError(`尚未收录这台机身（${exif.model}），先用当前选中机身生成`);
+      const miss = [];
+      if (!isFinite(p.focal)) miss.push('焦距');
+      if (!isFinite(p.expo)) miss.push('快门');
+      if (!isFinite(p.fnum)) miss.push('光圈');
+      if (!isFinite(p.iso)) miss.push('ISO');
+      if (miss.length) notices.push(`未解析到：${miss.join('、')}（已留空）`);
+    }
+    if (notices.length) showError(notices.join('；'));
+
+    await refreshProfileAliases();
+    if (p.model) {
+      const matched = BODIES.find(b => b.ready && (b.aliases || []).includes(p.model));
+      if (matched) {
+        state.bodyKey = matched.key;
+        syncSeg();
+      }
     }
     await render();
     els.drop.style.display = 'none';
@@ -262,7 +333,7 @@ function buildSeg() {
       if (state.bodyKey === b.key) return;
       state.bodyKey = b.key;
       syncSeg();
-      render().catch(showError);
+      renderFromState().catch(showError);
     });
     els.bodySeg.appendChild(btn);
   }
@@ -284,14 +355,14 @@ els.file.addEventListener('change', () => handleFile(els.file.files[0]));
   els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.remove('over'); }));
 els.drop.addEventListener('drop', e => handleFile(e.dataTransfer.files[0]));
 window.addEventListener('paste', e => {
-  const item = [...(e.clipboardData?.files || [])].find(f => f.type === 'image/jpeg');
+  const item = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
   if (item) handleFile(item);
 });
 
 els.save.addEventListener('click', () => {
   if (!state.card) return;
   state.card.toBlob(blob => {
-    const stem = (state.file?.name || 'card').replace(/\.jpe?g$/i, '');
+    const stem = (state.file?.name || 'card').replace(/\.[^.]+$/, '');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `${stem}_wm.jpg`;
