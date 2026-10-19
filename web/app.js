@@ -245,7 +245,10 @@ async function render() {
                          (ch - topMargin - textZone) / drawn.height);
   const bw = Math.round(drawn.width * sBody);
   const bh = Math.round(drawn.height * sBody);
-  const bx = Math.round((cw - bw) / 2), by = topMargin;
+  const bx = Math.round((cw - bw) / 2);
+  // always centered: horizontally on the canvas, vertically between the
+  // top margin and the caption zone
+  const by = topMargin + Math.round((ch - topMargin - textZone - bh) / 2);
   ctx.drawImage(drawn, bx, by, bw, bh);   // body first: its LCD is opaque
 
   // 3. screen paste (cover-crop, square corners), scale vs pre-resize width

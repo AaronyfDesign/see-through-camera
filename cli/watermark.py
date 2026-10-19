@@ -168,7 +168,10 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
     bw = round(orig_w * s_body)
     bh = round(body.height * s_body)
     body = body.resize((bw, bh), Image.LANCZOS)
-    bx, by = (canvas_w - bw) // 2, top_margin
+    bx = (canvas_w - bw) // 2
+    # always centered: horizontally on the canvas, vertically between the
+    # top margin and the caption zone
+    by = top_margin + (canvas_h - top_margin - text_zone - bh) // 2
 
     canvas.paste(body, (bx, by), body)  # body first: its LCD is opaque
 
