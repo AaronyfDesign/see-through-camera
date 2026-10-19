@@ -29,28 +29,42 @@ const LINE1_SIZE = 34, LINE2_SIZE = 30, GAP_LINE = 52;
 const FONT_SANS = '-apple-system,"PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif';
 const FONT_MONO = '"SF Mono",Menlo,Consolas,"Courier New",monospace';
 
-// calibrated bodies only; others render as disabled choices
-// d850 is the default entry and renders in low-contrast gray (profile "gray":true)
+// lego is the default entry (toy camera cutout, no EXIF auto-match);
+// d850 renders in low-contrast gray (profile "gray":true)
 const BODIES = [
-  { key: 'd850', label: 'D850',   profile: 'bodies/d850/profile.json',  ready: true },
-  { key: 'z63',  label: 'Z 6III', profile: 'bodies/z63/profile.json',   ready: true },
-  { key: 'zr',   label: 'ZR',     profile: 'bodies/zr/profile.json',    ready: true },
-  { key: 'z5',   label: 'Z 5',    profile: 'bodies/z5/profile.json',    ready: true },
-  { key: 'z52',  label: 'Z 5II',  profile: 'bodies/z52/profile.json',   ready: true },
+  { key: 'lego', label: 'LEGO 相机', profile: 'bodies/lego/profile.json', ready: true },
+  { key: 'd850', label: 'D850',   profile: 'bodies/d850/profile.json',  ready: true,
+    brand: 'NIKON' },
+  { key: 'z63',  label: 'Z 6III', profile: 'bodies/z63/profile.json',   ready: true,
+    brand: 'NIKON' },
+  { key: 'zr',   label: 'ZR',     profile: 'bodies/zr/profile.json',    ready: true,
+    brand: 'NIKON' },
+  { key: 'z5',   label: 'Z 5',    profile: 'bodies/z5/profile.json',    ready: true,
+    brand: 'NIKON' },
+  { key: 'z52',  label: 'Z 5II',  profile: 'bodies/z52/profile.json',   ready: true,
+    brand: 'NIKON' },
   { key: 'z5iic', label: 'Z 5II C', profile: 'bodies/z5iic/profile.json', ready: true,
-    hasColorways: true },
-  { key: 'z62',  label: 'Z 6II',  profile: 'bodies/z62/profile.json',   ready: true },
-  { key: 'z6',   label: 'Z 6',    profile: 'bodies/z6/profile.json',    ready: true },
-  { key: 'z72',  label: 'Z 7II',  profile: 'bodies/z72/profile.json',   ready: true },
-  { key: 'z7',   label: 'Z 7',    profile: 'bodies/z7/profile.json',    ready: true },
-  { key: 'z502', label: 'Z 50II', profile: 'bodies/z502/profile.json',  ready: true },
-  { key: 'z30',  label: 'Z 30',   profile: 'bodies/z30/profile.json',   ready: true },
-  { key: 'z8',   label: 'Z 8',    profile: 'bodies/z8/profile.json',    ready: true },
-  { key: 'z9',   label: 'Z 9',    profile: 'bodies/z9/profile.json',    ready: true },
+    hasColorways: true, brand: 'NIKON' },
+  { key: 'z62',  label: 'Z 6II',  profile: 'bodies/z62/profile.json',   ready: true,
+    brand: 'NIKON' },
+  { key: 'z6',   label: 'Z 6',    profile: 'bodies/z6/profile.json',    ready: true,
+    brand: 'NIKON' },
+  { key: 'z72',  label: 'Z 7II',  profile: 'bodies/z72/profile.json',   ready: true,
+    brand: 'NIKON' },
+  { key: 'z7',   label: 'Z 7',    profile: 'bodies/z7/profile.json',    ready: true,
+    brand: 'NIKON' },
+  { key: 'z502', label: 'Z 50II', profile: 'bodies/z502/profile.json',  ready: true,
+    brand: 'NIKON' },
+  { key: 'z30',  label: 'Z 30',   profile: 'bodies/z30/profile.json',   ready: true,
+    brand: 'NIKON' },
+  { key: 'z8',   label: 'Z 8',    profile: 'bodies/z8/profile.json',    ready: true,
+    brand: 'NIKON' },
+  { key: 'z9',   label: 'Z 9',    profile: 'bodies/z9/profile.json',    ready: true,
+    brand: 'NIKON' },
   { key: 'zf',   label: 'Z f',    profile: 'bodies/zf/profile.json',    ready: true,
-    hasColorways: true },
+    hasColorways: true, brand: 'NIKON' },
   { key: 'zfc',  label: 'Z fc',   profile: 'bodies/zfc/profile.json',   ready: true,
-    hasColorways: true },
+    hasColorways: true, brand: 'NIKON' },
 ];
 
 const FILTER_OK = (() => {
@@ -71,7 +85,7 @@ let state = {
   file: null,        // picked File
   img: null,         // HTMLImageElement, orientation-normalized by the browser
   params: null,      // partial: any of model/lens/focal/expo/fnum/iso
-  bodyKey: 'd850',   // user-selected body (default D850, gray placeholder)
+  bodyKey: 'lego',   // user-selected body (default: toy camera)
   colorway: 'silver',// silver | black; only used by bodies with colorways
   card: null,        // rendered canvas
 };
@@ -255,12 +269,12 @@ async function render() {
   ctx.restore();
 
   // 4. caption lines, pinned to the card bottom, auto-shrink on overflow;
-  //    unparsed fields are simply left out
-  const bodyLabel = BODIES.find(b => b.key === state.bodyKey).label;
   const parts1 = [];
   if (params.model) parts1.push(params.model);
   if (params.lens) parts1.push(params.lens);
-  const line1 = parts1.join(' · ') || `NIKON ${bodyLabel}`;
+  const bSel = BODIES.find(x => x.key === state.bodyKey);
+  const line1 = parts1.join(' · ') ||
+                `${bSel.brand ? bSel.brand + ' ' : ''}${bSel.label}`;
   const parts2 = [];
   if (isFinite(params.focal)) parts2.push(`${trimNum(params.focal)} mm`);
   if (isFinite(params.expo)) parts2.push(fmtShutter(params.expo));
