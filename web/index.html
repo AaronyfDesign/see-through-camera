@@ -1,26 +1,84 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>see-through-camera</title>
 <style>
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-       background:#14181d;color:#e8e6e1;font:15px/1.6 -apple-system,"Helvetica Neue",Arial,sans-serif}
-  main{max-width:640px;padding:48px 24px;text-align:center}
-  h1{font-size:22px;font-weight:600;letter-spacing:.02em;margin:0 0 8px}
-  p{color:#9aa3ad;margin:0 0 28px}
-  img{max-width:100%;border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
-  .portrait{max-height:70vh;width:auto}
+  :root{
+    --bg:#14181d; --panel:#1c2128; --line:#2a313a; --ink:#e8e6e1;
+    --dim:#9aa3ad; --accent:#e8e6e1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+       font:15px/1.6 -apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif}
+  main{max-width:1080px;margin:0 auto;padding:36px 20px 64px}
+  header h1{font-size:20px;font-weight:600;margin:0 0 4px}
+  header p{margin:0;color:var(--dim);font-size:14px}
+
+  /* stage: drop zone ⇄ preview */
+  #stage{margin-top:24px}
+  #drop{border:1.5px dashed var(--line);border-radius:10px;background:var(--panel);
+        min-height:340px;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;gap:10px;cursor:pointer;transition:border-color .15s}
+  #drop:hover,#drop.over{border-color:#5a6673}
+  #drop .hint{color:var(--dim)}
+  #drop strong{font-weight:600;color:var(--ink)}
+  #previewWrap{display:none;text-align:center}
+  #preview{max-width:100%;max-height:74vh;border-radius:8px;
+           box-shadow:0 14px 48px rgba(0,0,0,.55)}
+  #err{display:none;margin-top:14px;color:#e2a1a1;font-size:14px}
+
+  /* controls */
+  #controls{display:none;margin-top:20px;align-items:center;gap:16px;flex-wrap:wrap}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--dim);
+              padding:7px 16px;font:inherit;font-size:14px;cursor:pointer}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:var(--accent);color:#14181d}
+  .seg button:disabled{color:#4a525c;cursor:not-allowed;position:relative}
+  .seg button:disabled:hover::after{content:attr(data-tip);
+      position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+      background:#000;color:#cfd6dd;font-size:12px;padding:4px 8px;border-radius:5px;
+      white-space:nowrap;pointer-events:none}
+  .btn{appearance:none;border:0;border-radius:8px;background:var(--accent);
+       color:#14181d;font:inherit;font-size:14px;padding:8px 20px;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+  .spacer{flex:1}
+  footer{margin-top:36px;color:#5a626c;font-size:12.5px}
+  footer a{color:#7c8792;text-decoration:none}
 </style>
 </head>
 <body>
 <main>
-  <h1>see-through-camera</h1>
-  <p>Put your photo back into the camera's rear LCD.<br>In-browser generator is in progress — here is what it makes:</p>
-  <img src="sample-card.jpg" alt="sample card" style="margin-bottom:20px">
-  <br>
-  <img class="portrait" src="sample-card-portrait.jpg" alt="portrait sample card">
+  <header>
+    <h1>see-through-camera</h1>
+    <p>把照片装回机身背屏 —— 照片只在你的浏览器里处理，不会上传</p>
+  </header>
+
+  <section id="stage">
+    <div id="drop" role="button" aria-label="选择照片">
+      <strong>选择一张照片</strong>
+      <span class="hint">或将照片拖到这里 · 支持 JPEG</span>
+    </div>
+    <input id="file" type="file" accept="image/jpeg" hidden>
+    <div id="previewWrap"><img id="preview" alt="生成的回屏卡片"></div>
+    <div id="err"></div>
+  </section>
+
+  <section id="controls">
+    <div class="seg" id="bodySeg" aria-label="机身"></div>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="repick">换一张照片</button>
+    <button class="btn" id="save">保存卡片</button>
+  </section>
+
+  <footer>
+    机身图片来自尼康官网产品页，版权归尼康公司所有 ·
+    <a href="https://github.com/AaronyfDesign/see-through-camera">GitHub</a>
+  </footer>
 </main>
+<script src="vendor/exifr.full.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
