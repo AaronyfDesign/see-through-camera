@@ -1,0 +1,26 @@
+{
+  "aliases": [
+    "NIKON ZR"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      112,
+      162
+    ],
+    [
+      542,
+      162
+    ],
+    [
+      542,
+      455
+    ],
+    [
+      112,
+      455
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

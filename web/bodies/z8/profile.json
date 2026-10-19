@@ -1,0 +1,26 @@
+{
+  "aliases": [
+    "NIKON Z 8"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      125,
+      254
+    ],
+    [
+      450,
+      254
+    ],
+    [
+      450,
+      468
+    ],
+    [
+      125,
+      468
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

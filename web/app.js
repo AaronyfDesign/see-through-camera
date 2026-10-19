@@ -32,12 +32,12 @@ const FONT_MONO = '"SF Mono",Menlo,Consolas,"Courier New",monospace';
 // calibrated bodies only; others render as disabled choices
 const BODIES = [
   { key: 'z63', label: 'Z 6III', profile: 'bodies/z63/profile.json', ready: true },
-  { key: 'zr',  label: 'ZR',     profile: null, ready: false, tip: '标定中' },
-  { key: 'z5',  label: 'Z 5',    profile: null, ready: false, tip: '标定中' },
-  { key: 'z8',  label: 'Z 8',    profile: null, ready: false, tip: '标定中' },
-  { key: 'z9',  label: 'Z 9',    profile: null, ready: false, tip: '标定中' },
-  { key: 'zf',  label: 'Z f',    profile: null, ready: false, tip: '标定中' },
-  { key: 'zfc', label: 'Z fc',   profile: null, ready: false, tip: '标定中' },
+  { key: 'zr',  label: 'ZR',     profile: 'bodies/zr/profile.json',  ready: true },
+  { key: 'z5',  label: 'Z 5',    profile: 'bodies/z5/profile.json',  ready: true },
+  { key: 'z8',  label: 'Z 8',    profile: 'bodies/z8/profile.json',  ready: true },
+  { key: 'z9',  label: 'Z 9',    profile: 'bodies/z9/profile.json',  ready: true },
+  { key: 'zf',  label: 'Z f',    profile: 'bodies/zf/profile.json',  ready: true },
+  { key: 'zfc', label: 'Z fc',   profile: 'bodies/zfc/profile.json', ready: true },
 ];
 
 const FILTER_OK = (() => {

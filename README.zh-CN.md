@@ -34,8 +34,8 @@ python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 
 ## 进度
 
-- [x] Z6_3 —— 已标定（屏幕四点经面板比例交叉验证）
-- [ ] ZR / Z5 / Z8 / Z9 / Zf / Zfc —— 产品图已归档，LCD 标定进行中
+- [x] Z6_3 —— 已标定
+- [x] ZR / Z5 / Z8 / Z9 / Zf / Zfc —— 已标定（LCD 四点经 2 倍标尺放大人工读取）
 
 ## 素材与商标说明
 

@@ -34,8 +34,8 @@ The body is matched automatically from the photo's EXIF model field; `--body` ov
 
 ## Status
 
-- [x] Z6_3 — calibrated (screen quad verified against known panel ratio)
-- [ ] ZR / Z5 / Z8 / Z9 / Zf / Zfc — body renders archived, LCD calibration in progress
+- [x] Z6_3 — calibrated
+- [x] ZR / Z5 / Z8 / Z9 / Zf / Zfc — calibrated (LCD quad hand-read from 2× ruler overlays)
 
 ## Credits & trademarks
 

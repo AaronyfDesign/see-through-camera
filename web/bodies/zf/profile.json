@@ -1,0 +1,27 @@
+{
+  "aliases": [
+    "NIKON Z f",
+    "NIKON Zf"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      118,
+      273
+    ],
+    [
+      448,
+      273
+    ],
+    [
+      448,
+      503
+    ],
+    [
+      118,
+      503
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

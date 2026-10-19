@@ -1,0 +1,26 @@
+{
+  "aliases": [
+    "NIKON Z 9"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      120,
+      243
+    ],
+    [
+      426,
+      243
+    ],
+    [
+      426,
+      420
+    ],
+    [
+      120,
+      420
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

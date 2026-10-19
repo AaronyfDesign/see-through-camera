@@ -1,0 +1,26 @@
+{
+  "aliases": [
+    "NIKON Z 5"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      118,
+      250
+    ],
+    [
+      452,
+      250
+    ],
+    [
+      452,
+      464
+    ],
+    [
+      118,
+      464
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

@@ -1,0 +1,26 @@
+{
+  "aliases": [
+    "NIKON Z fc"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      108,
+      258
+    ],
+    [
+      438,
+      258
+    ],
+    [
+      438,
+      488
+    ],
+    [
+      108,
+      488
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}
