@@ -145,8 +145,9 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
 
     # 2+3. layer sandwich: photo (middle) UNDER the body (top). The body
     #      gets a transparent window punched at the screen quad at runtime,
-    #      so the bezel naturally masks any paste overflow; the paste rect
-    #      is the quad expanded a few px so no unlit glass ring shows.
+    #      so the bezel naturally masks any paste overflow; the punched
+    #      window is EXACTLY the screen quad (square corners), and the photo
+    #      fills it completely — no more, no less.
     body = Image.open(prof['png']).convert('RGBA')
     if prof.get('gray'):  # e.g. D850 placeholder: low-contrast gray look
         a = body.getchannel('A')
@@ -157,17 +158,17 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         body = Image.merge('RGBA', (*rgb.split(), a))
     qx, qy = zip(*prof['screen_quad'])
     ql, qt, qr, qb = min(qx), min(qy), max(qx), max(qy)
-    # window: quad inset 2px, corners rounded like the real glass
-    inset = 2
-    rad = max(4, round((qr - ql) * 0.03))
+    # window: EXACTLY the screen quad, square corners — the photo fills
+    # the cut-out completely: no overflow, no unlit ring, no rounding.
     alpha = body.getchannel('A')
-    ImageDraw.Draw(alpha).rounded_rectangle(
-        [ql + inset, qt + inset, qr - inset - 1, qb - inset - 1],
-        radius=rad, fill=0)
+    ImageDraw.Draw(alpha).rectangle(
+        [ql, qt, qr - 1, qb - 1], fill=0)
     body.putalpha(alpha)
-    # photo rect: quad expanded, clamped to stay inside the body silhouette
+    # photo rect: the quad plus a hair of anti-seam bleed, clamped to the
+    # body silhouette — the bleed sits under the opaque bezel and is never
+    # visible; it only kills subpixel seams between paste and window edge.
     bbox = alpha.point(lambda v: 255 if v > 10 else 0).getbbox()
-    exp = 6
+    exp = 2
     el = min(exp, ql - bbox[0]); et = min(exp, qt - bbox[1])
     er = min(exp, bbox[2] - 1 - qr); eb = min(exp, bbox[3] - 1 - qb)
     quad = [[ql - el, qt - et], [qr + er, qt - et],

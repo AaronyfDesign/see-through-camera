@@ -224,9 +224,9 @@ async function render() {
   ctx.fillRect(0, 0, cw, ch);
 
   // 2+3. layer sandwich: photo (middle) UNDER the body (top). The body
-  //      canvas gets a transparent window punched at the screen quad, so
-  //      the bezel masks any paste overflow; the paste rect is the quad
-  //      expanded a few px, clamped to the body's opaque silhouette.
+  //      canvas gets a transparent window punched EXACTLY at the screen
+  //      quad (square corners) — the photo fills the cut-out completely;
+  //      a hair of anti-seam bleed hides under the opaque bezel.
   const bodyImg = body.prof.gray ? grayCanvas(body.png) : body.png;
   let quad = body.quad.map(p => p.slice());
   const bw0 = bodyImg.width, bh0 = bodyImg.height;
@@ -247,19 +247,19 @@ async function render() {
       }
     }
   }
-  // punch the window: quad inset 2px, rounded like the real glass
+  // punch the window: EXACTLY the quad, square corners — the photo fills
+  // the cut-out completely: no overflow, no gaps, no rounding
   const xs0 = quad.map(p => p[0]), ys0 = quad.map(p => p[1]);
   const ql = Math.min(...xs0), qt = Math.min(...ys0);
   const qr = Math.max(...xs0), qb = Math.max(...ys0);
-  const inset = 2, rad = Math.max(4, Math.round((qr - ql) * 0.03));
   bbg.globalCompositeOperation = 'destination-out';
   bbg.beginPath();
-  bbg.roundRect(ql + inset, qt + inset, qr - ql - 2 * inset,
-                qb - qt - 2 * inset, rad);
+  bbg.rect(ql, qt, qr - ql, qb - qt);
   bbg.fill();
   bbg.globalCompositeOperation = 'source-over';
-  // expanded paste quad, clamped to the silhouette
-  const exp = 6;
+  // paste quad: the quad plus a hair of anti-seam bleed, clamped to the
+  // silhouette — the bleed hides under the opaque bezel (invisible)
+  const exp = 2;
   const el = Math.min(exp, ql - bx0), et = Math.min(exp, qt - by0);
   const er = Math.min(exp, bx1 - qr), eb = Math.min(exp, by1 - qb);
   let pquad = [[ql - el, qt - et], [qr + er, qt - et],
