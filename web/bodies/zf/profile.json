@@ -6,27 +6,45 @@
   "png": "body.png",
   "screen_quad": [
     [
-      118,
-      273
+      96,
+      266
     ],
     [
-      448,
-      273
+      458,
+      266
     ],
     [
-      448,
-      503
+      458,
+      524
     ],
     [
-      118,
-      503
+      96,
+      524
     ]
   ],
   "screen_radius": 0,
   "crop_factor": 1.0,
   "colorways": {
     "black": {
-      "png": "body_black.png"
+      "png": "body_black.png",
+      "screen_quad": [
+        [
+          96,
+          266
+        ],
+        [
+          465,
+          266
+        ],
+        [
+          465,
+          525
+        ],
+        [
+          96,
+          525
+        ]
+      ]
     }
   }
 }
