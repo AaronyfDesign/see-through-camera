@@ -180,7 +180,7 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False):
     line2 = (f'{focal:g} mm · {fmt_shutter(exif["expo"])} · '
              f'f/{exif["fnum"]:g} · ISO {exif["iso"]}')
     draw = ImageDraw.Draw(canvas, 'RGBA')
-    y = min(by + bh + 56, canvas_h - GAP_LINE - LINE2_SIZE - 24)
+    y = canvas_h - 24 - LINE2_SIZE - GAP_LINE  # pinned to card bottom
     max_text_w = canvas_w - 48
     for text, size, font_path in ((line1, LINE1_SIZE, FONT_SANS),
                                   (line2, LINE2_SIZE, FONT_MONO)):

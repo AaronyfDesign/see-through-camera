@@ -174,7 +174,7 @@ async function render() {
   const line2 = `${trimNum(exif.focal)} mm · ${fmtShutter(exif.expo)} · ` +
                 `f/${trimNum(exif.fnum)} · ISO ${exif.iso}`;
   ctx.textBaseline = 'alphabetic';
-  let y = Math.min(by + bh + 56, ch - GAP_LINE - LINE2_SIZE - 24);
+  let y = ch - 24 - LINE2_SIZE - GAP_LINE;  // pinned to card bottom
   const maxTextW = cw - 48;
   for (const [text, size, font] of [[line1, LINE1_SIZE, FONT_SANS],
                                     [line2, LINE2_SIZE, FONT_MONO]]) {
