@@ -1,0 +1,7 @@
+{
+  "aliases": ["NIKON Z6_3", "NIKON Z 6_3"],
+  "png": "body.png",
+  "screen_quad": [[126, 283], [464, 283], [464, 489], [126, 489]],
+  "screen_radius": 8,
+  "crop_factor": 1.0
+}
