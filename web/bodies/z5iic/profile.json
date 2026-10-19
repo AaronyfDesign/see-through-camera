@@ -1,0 +1,34 @@
+{
+  "aliases": [
+    "NIKON Z 5_2C",
+    "NIKON Z5_2C",
+    "NIKON Z5IIC",
+    "NIKON Z 5IIC"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      178,
+      252
+    ],
+    [
+      730,
+      252
+    ],
+    [
+      730,
+      615
+    ],
+    [
+      178,
+      615
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0,
+  "colorways": {
+    "black": {
+      "png": "body_black.png"
+    }
+  }
+}

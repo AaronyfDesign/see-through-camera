@@ -108,10 +108,20 @@ def cover(img, w, h):
                       Image.LANCZOS)
 
 
-def build(photo_path, body_key, out_path, focal_mode='actual', debug=False):
+def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
+          colorway=None):
     photo = Image.open(photo_path)
     exif = read_exif(photo)
     body_key, prof = load_profile(body_key, exif['model'])
+    if colorway:
+        cw = prof.get('colorways', {}).get(colorway)
+        if not cw:
+            opts = ', '.join(prof.get('colorways', {})) or 'none'
+            raise SystemExit(f'error: no colorway "{colorway}" for {body_key}; '
+                             f'available: {opts}')
+        prof = {**prof, 'png': cw['png']}
+        if cw.get('screen_quad'):
+            prof['screen_quad'] = cw['screen_quad']
     prof = {**prof, 'png': profile_png(PROFILES_DIR, body_key, prof)}
 
     photo = ImageOps.exif_transpose(photo).convert('RGB')  # orientation -> 1
@@ -135,6 +145,13 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False):
 
     # 2. body layer
     body = Image.open(prof['png']).convert('RGBA')
+    if prof.get('gray'):  # e.g. D850 placeholder: low-contrast gray look
+        a = body.getchannel('A')
+        rgb = body.convert('RGB')
+        rgb = ImageEnhance.Color(rgb).enhance(0.25)
+        rgb = ImageEnhance.Contrast(rgb).enhance(0.72)
+        rgb = ImageEnhance.Brightness(rgb).enhance(0.96)
+        body = Image.merge('RGBA', (*rgb.split(), a))
     # portrait canvas: stand the body upright too (rotate visual-CCW so the
     # grip lands at the top — vertical-shooting habit), and rotate the screen
     # quad into that space: (x, y) -> (y, orig_w - x)
@@ -215,11 +232,14 @@ def main():
     ap.add_argument('--body', default='auto',
                     help='auto | profile key (see body_profiles/)')
     ap.add_argument('--focal', choices=['actual', 'eq35'], default='actual')
+    ap.add_argument('--colorway', default=None,
+                    help='optional colorway key (e.g. black) if the profile '
+                         'defines one')
     ap.add_argument('--debug', action='store_true',
                     help='also save a quad-outline overlay for calibration')
     a = ap.parse_args()
     out = a.output or OUT_DEFAULT / 's11' / f'{a.input.stem}_wm.jpg'
-    build(a.input, a.body, out, a.focal, a.debug)
+    build(a.input, a.body, out, a.focal, a.debug, a.colorway)
 
 
 if __name__ == '__main__':

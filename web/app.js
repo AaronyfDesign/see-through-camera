@@ -30,14 +30,20 @@ const FONT_SANS = '-apple-system,"PingFang SC","Helvetica Neue",Helvetica,Arial,
 const FONT_MONO = '"SF Mono",Menlo,Consolas,"Courier New",monospace';
 
 // calibrated bodies only; others render as disabled choices
+// d850 is the default entry and renders in low-contrast gray (profile "gray":true)
 const BODIES = [
-  { key: 'z63', label: 'Z 6III', profile: 'bodies/z63/profile.json', ready: true },
-  { key: 'zr',  label: 'ZR',     profile: 'bodies/zr/profile.json',  ready: true },
-  { key: 'z5',  label: 'Z 5',    profile: 'bodies/z5/profile.json',  ready: true },
-  { key: 'z8',  label: 'Z 8',    profile: 'bodies/z8/profile.json',  ready: true },
-  { key: 'z9',  label: 'Z 9',    profile: 'bodies/z9/profile.json',  ready: true },
-  { key: 'zf',  label: 'Z f',    profile: 'bodies/zf/profile.json',  ready: true },
-  { key: 'zfc', label: 'Z fc',   profile: 'bodies/zfc/profile.json', ready: true },
+  { key: 'd850', label: 'D850',   profile: 'bodies/d850/profile.json',  ready: true },
+  { key: 'z63',  label: 'Z 6III', profile: 'bodies/z63/profile.json',   ready: true },
+  { key: 'zr',   label: 'ZR',     profile: 'bodies/zr/profile.json',    ready: true },
+  { key: 'z5',   label: 'Z 5',    profile: 'bodies/z5/profile.json',    ready: true },
+  { key: 'z5iic', label: 'Z 5II C', profile: 'bodies/z5iic/profile.json', ready: true,
+    hasColorways: true },
+  { key: 'z8',   label: 'Z 8',    profile: 'bodies/z8/profile.json',    ready: true },
+  { key: 'z9',   label: 'Z 9',    profile: 'bodies/z9/profile.json',    ready: true },
+  { key: 'zf',   label: 'Z f',    profile: 'bodies/zf/profile.json',    ready: true,
+    hasColorways: true },
+  { key: 'zfc',  label: 'Z fc',   profile: 'bodies/zfc/profile.json',   ready: true,
+    hasColorways: true },
 ];
 
 const FILTER_OK = (() => {
@@ -52,13 +58,14 @@ const $ = (id) => document.getElementById(id);
 const els = {
   drop: $('drop'), file: $('file'), previewWrap: $('previewWrap'),
   preview: $('preview'), err: $('err'), controls: $('controls'),
-  bodySeg: $('bodySeg'), repick: $('repick'), save: $('save'),
+  bodySel: $('bodySel'), cwSeg: $('cwSeg'), repick: $('repick'), save: $('save'),
 };
 let state = {
   file: null,        // picked File
   img: null,         // HTMLImageElement, orientation-normalized by the browser
   params: null,      // partial: any of model/lens/focal/expo/fnum/iso
-  bodyKey: 'z63',    // user-selected body (default z63)
+  bodyKey: 'd850',   // user-selected body (default D850, gray placeholder)
+  colorway: 'silver',// silver | black; only used by bodies with colorways
   card: null,        // rendered canvas
 };
 
@@ -121,21 +128,62 @@ function drawCoverBlurFallback(ctx, img, w, h) {
 }
 
 // ---------- pipeline ----------
-async function loadBody(profileUrl) {
+async function loadBody(profileUrl, colorway) {
   const prof = await (await fetch(profileUrl)).json();
   const base = new URL(profileUrl, location.href);
+  let pngName = prof.png;
+  let quad = prof.screen_quad;
+  const cw = colorway && colorway !== 'silver' &&
+             prof.colorways && prof.colorways[colorway];
+  if (cw) {
+    pngName = cw.png;
+    if (cw.screen_quad) quad = cw.screen_quad;  // per-colorway geometry
+  }
   const png = await new Promise((ok, no) => {
     const im = new Image();
     im.onload = () => ok(im);
     im.onerror = () => no(new Error('机身图加载失败'));
-    im.src = new URL(prof.png, base).href;
+    im.src = new URL(pngName, base).href;
   });
-  return { prof, png };
+  return { prof, png, quad };
+}
+
+// low-contrast gray look for placeholder bodies (e.g. D850)
+function grayCanvas(img) {
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  if (FILTER_OK) {
+    g.filter = 'grayscale(1) contrast(0.72) brightness(0.96)';
+    g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(img, 0, 0);
+    g.filter = 'none';
+  } else {
+    // legacy fallback: manual desaturate + contrast around mid-gray
+    const d = g.getImageData(0, 0, c.width, c.height);
+    const px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (!px[i + 3]) continue;
+      const v = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+      const o = ((v - 128) * 0.72 + 128) * 0.96;
+      px[i] = px[i + 1] = px[i + 2] = o;
+    }
+    g.putImageData(d, 0, 0);
+  }
+  return c;
+}
+
+function renderFromState() {
+  if (!state.img) return Promise.resolve();
+  return render();
 }
 
 async function render() {
   const { img, params } = state;
-  const body = await loadBody(BODIES.find(b => b.key === state.bodyKey).profile);
+  const b = BODIES.find(b => b.key === state.bodyKey);
+  const body = await loadBody(b.profile,
+                              b.hasColorways ? state.colorway : null);
 
   const { w: cw, h: ch } = canvasSize(img.naturalWidth, img.naturalHeight);
   const card = document.createElement('canvas');
@@ -154,8 +202,9 @@ async function render() {
   ctx.fillRect(0, 0, cw, ch);
 
   // 2. body layer; portrait: rotate visual-CCW (grip up), remap quad
-  let quad = body.prof.screen_quad.map(p => p.slice());
-  const bw0 = body.png.width, bh0 = body.png.height;
+  const bodyImg = body.prof.gray ? grayCanvas(body.png) : body.png;
+  let quad = body.quad.map(p => p.slice());
+  const bw0 = bodyImg.width, bh0 = bodyImg.height;
   const portrait = ch >= cw;
   const drawn = document.createElement('canvas');
   const dctx = drawn.getContext('2d');
@@ -163,11 +212,11 @@ async function render() {
     drawn.width = bh0; drawn.height = bw0;
     dctx.translate(0, bw0);
     dctx.rotate(-Math.PI / 2);
-    dctx.drawImage(body.png, 0, 0);
+    dctx.drawImage(bodyImg, 0, 0);
     quad = quad.map(([x, y]) => [y, bw0 - x]);
   } else {
     drawn.width = bw0; drawn.height = bh0;
-    dctx.drawImage(body.png, 0, 0);
+    dctx.drawImage(bodyImg, 0, 0);
   }
   const topMargin = Math.round(ch * BODY_TOP_FRAC);
   const textZone = 56 + GAP_LINE + LINE2_SIZE + 30;
@@ -295,7 +344,8 @@ async function handleFile(file) {
       const matched = BODIES.find(b => b.ready && (b.aliases || []).includes(p.model));
       if (matched) {
         state.bodyKey = matched.key;
-        syncSeg();
+        state.colorway = 'silver';
+        syncSel();
       }
     }
     await render();
@@ -318,32 +368,40 @@ async function refreshProfileAliases() {
   }
 }
 
-// ---------- body switcher ----------
-function buildSeg() {
-  els.bodySeg.innerHTML = '';
+// ---------- body switcher (dropdown) + colorway toggle ----------
+function buildSel() {
+  els.bodySel.innerHTML = '';
   for (const b of BODIES) {
-    const btn = document.createElement('button');
-    btn.textContent = b.label;
-    btn.dataset.key = b.key;
-    if (!b.ready) {
-      btn.disabled = true;
-      if (b.tip) btn.dataset.tip = b.tip;
-    }
-    btn.addEventListener('click', () => {
-      if (state.bodyKey === b.key) return;
-      state.bodyKey = b.key;
-      syncSeg();
-      renderFromState().catch(showError);
-    });
-    els.bodySeg.appendChild(btn);
+    const opt = document.createElement('option');
+    opt.value = b.key;
+    opt.textContent = b.ready ? b.label : `${b.label}（待支持）`;
+    if (!b.ready) opt.disabled = true;
+    els.bodySel.appendChild(opt);
   }
-  syncSeg();
+  syncSel();
 }
-function syncSeg() {
-  for (const btn of els.bodySeg.children) {
-    btn.classList.toggle('on', btn.dataset.key === state.bodyKey);
+function syncSel() {
+  els.bodySel.value = state.bodyKey;
+  const b = BODIES.find(x => x.key === state.bodyKey);
+  els.cwSeg.hidden = !b || !b.hasColorways;
+  for (const btn of els.cwSeg.querySelectorAll('button')) {
+    btn.classList.toggle('on', btn.dataset.cw === state.colorway);
   }
 }
+els.bodySel.addEventListener('change', () => {
+  if (state.bodyKey === els.bodySel.value) return;
+  state.bodyKey = els.bodySel.value;
+  state.colorway = 'silver';  // reset colorway on body switch
+  syncSel();
+  if (state.img) renderFromState().catch(showError);
+});
+els.cwSeg.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-cw]');
+  if (!btn || state.colorway === btn.dataset.cw) return;
+  state.colorway = btn.dataset.cw;
+  syncSel();
+  if (state.img) renderFromState().catch(showError);
+});
 
 // ---------- wire up ----------
 els.drop.addEventListener('click', () => els.file.click());
@@ -371,4 +429,4 @@ els.save.addEventListener('click', () => {
   }, 'image/jpeg', 0.93);
 });
 
-buildSeg();
+buildSel();

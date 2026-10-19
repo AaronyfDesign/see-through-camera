@@ -10,6 +10,7 @@
     --dim:#9aa3ad; --accent:#e8e6e1;
   }
   *{box-sizing:border-box}
+  [hidden]{display:none!important}
   body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
        font:15px/1.6 -apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif}
   main{max-width:1080px;margin:0 auto;padding:36px 20px 64px}
@@ -36,6 +37,13 @@
               padding:7px 16px;font:inherit;font-size:14px;cursor:pointer}
   .seg button+button{border-left:1px solid var(--line)}
   .seg button.on{background:var(--accent);color:#14181d}
+  .sel{appearance:none;-webkit-appearance:none;border:1px solid var(--line);
+       border-radius:8px;background:var(--panel) no-repeat right 10px center;
+       background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239aa3ad' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+       color:var(--ink);font:inherit;font-size:14px;padding:7px 30px 7px 12px;
+       cursor:pointer}
+  .sel:focus{outline:none;border-color:#5a6673}
+  .sel option{background:var(--panel);color:var(--ink)}
   .seg button:disabled{color:#4a525c;cursor:not-allowed;position:relative}
   .seg button:disabled:hover::after{content:attr(data-tip);
       position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
@@ -67,7 +75,11 @@
   </section>
 
   <section id="controls">
-    <div class="seg" id="bodySeg" aria-label="机身"></div>
+    <select id="bodySel" class="sel" aria-label="机型"></select>
+    <div class="seg" id="cwSeg" hidden aria-label="配色">
+      <button type="button" data-cw="silver">银色</button>
+      <button type="button" data-cw="black">黑色</button>
+    </div>
     <span class="spacer"></span>
     <button class="btn ghost" id="repick">换一张照片</button>
     <button class="btn" id="save">保存卡片</button>

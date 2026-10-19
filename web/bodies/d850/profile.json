@@ -1,0 +1,27 @@
+{
+  "aliases": [
+    "NIKON D850"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      152,
+      360
+    ],
+    [
+      455,
+      360
+    ],
+    [
+      455,
+      566
+    ],
+    [
+      152,
+      566
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0,
+  "gray": true
+}
