@@ -1,0 +1,28 @@
+{
+  "aliases": [
+    "NIKON Z 50_2",
+    "NIKON Z50II",
+    "NIKON Z 50II"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      97,
+      270
+    ],
+    [
+      490,
+      270
+    ],
+    [
+      490,
+      543
+    ],
+    [
+      97,
+      543
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

@@ -1,0 +1,28 @@
+{
+  "aliases": [
+    "NIKON Z 7_2",
+    "NIKON Z7II",
+    "NIKON Z 7II"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      88,
+      285
+    ],
+    [
+      474,
+      285
+    ],
+    [
+      474,
+      530
+    ],
+    [
+      88,
+      530
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

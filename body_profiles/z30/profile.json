@@ -1,0 +1,27 @@
+{
+  "aliases": [
+    "NIKON Z 30",
+    "NIKON Z30"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      95,
+      207
+    ],
+    [
+      463,
+      207
+    ],
+    [
+      463,
+      420
+    ],
+    [
+      95,
+      420
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}

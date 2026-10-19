@@ -1,0 +1,28 @@
+{
+  "aliases": [
+    "NIKON Z 5_2",
+    "NIKON Z5II",
+    "NIKON Z 5II"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      150,
+      400
+    ],
+    [
+      672,
+      400
+    ],
+    [
+      672,
+      770
+    ],
+    [
+      150,
+      770
+    ]
+  ],
+  "screen_radius": 0,
+  "crop_factor": 1.0
+}
