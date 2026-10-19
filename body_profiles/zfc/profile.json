@@ -23,27 +23,5 @@
   ],
   "screen_radius": 0,
   "crop_factor": 1.0,
-  "colorways": {
-    "black": {
-      "png": "body_black.png",
-      "screen_quad": [
-        [
-          115,
-          248
-        ],
-        [
-          478,
-          248
-        ],
-        [
-          478,
-          491
-        ],
-        [
-          115,
-          491
-        ]
-      ]
-    }
-  }
+  "colorways": {}
 }

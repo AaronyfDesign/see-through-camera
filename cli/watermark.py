@@ -143,7 +143,10 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
     bg = ImageEnhance.Brightness(bg).enhance(BG_DARKEN)
     canvas.paste(bg, (0, 0))
 
-    # 2. body layer
+    # 2+3. layer sandwich: photo (middle) UNDER the body (top). The body
+    #      gets a transparent window punched at the screen quad at runtime,
+    #      so the bezel naturally masks any paste overflow; the paste rect
+    #      is the quad expanded a few px so no unlit glass ring shows.
     body = Image.open(prof['png']).convert('RGBA')
     if prof.get('gray'):  # e.g. D850 placeholder: low-contrast gray look
         a = body.getchannel('A')
@@ -152,14 +155,31 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         rgb = ImageEnhance.Contrast(rgb).enhance(0.72)
         rgb = ImageEnhance.Brightness(rgb).enhance(0.96)
         body = Image.merge('RGBA', (*rgb.split(), a))
+    qx, qy = zip(*prof['screen_quad'])
+    ql, qt, qr, qb = min(qx), min(qy), max(qx), max(qy)
+    # window: quad inset 2px, corners rounded like the real glass
+    inset = 2
+    rad = max(4, round((qr - ql) * 0.03))
+    alpha = body.getchannel('A')
+    ImageDraw.Draw(alpha).rounded_rectangle(
+        [ql + inset, qt + inset, qr - inset - 1, qb - inset - 1],
+        radius=rad, fill=0)
+    body.putalpha(alpha)
+    # photo rect: quad expanded, clamped to stay inside the body silhouette
+    bbox = alpha.point(lambda v: 255 if v > 10 else 0).getbbox()
+    exp = 6
+    el = min(exp, ql - bbox[0]); et = min(exp, qt - bbox[1])
+    er = min(exp, bbox[2] - 1 - qr); eb = min(exp, bbox[3] - 1 - qb)
+    quad = [[ql - el, qt - et], [qr + er, qt - et],
+            [qr + er, qb + eb], [ql - el, qb + eb]]
     # portrait canvas: stand the body upright too (rotate visual-CCW so the
-    # grip lands at the top — vertical-shooting habit), and rotate the screen
-    # quad into that space: (x, y) -> (y, orig_w - x)
+    # grip lands at the top — vertical-shooting habit), and rotate the
+    # (expanded) paste quad into that space: (x, y) -> (y, orig_w - x)
     if canvas_h >= canvas_w:
         bw0 = body.width
         body = body.transpose(Image.ROTATE_90)
-        prof['screen_quad'] = [[y, bw0 - x] for (x, y) in prof['screen_quad']]
-    orig_w = body.width  # quad coords are in (post-rotation) body pixel space
+        quad = [[y, bw0 - x] for (x, y) in quad]
+    orig_w = body.width
     # fit both axes: 80% width cap, plus height cap reserving the text zone
     top_margin = round(canvas_h * BODY_TOP_FRAC)
     text_zone = 56 + GAP_LINE + LINE2_SIZE + 30
@@ -173,24 +193,24 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
     # top margin and the caption zone
     by = top_margin + (canvas_h - top_margin - text_zone - bh) // 2
 
-    canvas.paste(body, (bx, by), body)  # body first: its LCD is opaque
-
-    # 3. screen paste (after body, else the opaque LCD covers it): rect in
-    #    body-pixel space -> canvas space, rounded mask
-    qx, qy = zip(*prof['screen_quad'])
+    # middle layer: screen paste, cover-crop, never stretch. Per-body zoom
+    # falls out of the quad size automatically.
+    px, py = zip(*quad)
     s = bw / orig_w  # render scale; MUST reference pre-resize width
-    left, top = min(qx) * s + bx, min(qy) * s + by
-    right, bottom = max(qx) * s + bx, max(qy) * s + by
+    left, top = min(px) * s + bx, min(py) * s + by
+    right, bottom = max(px) * s + bx, max(py) * s + by
     qw, qh = round(right - left), round(bottom - top)
-    screen = cover(photo, qw, qh)  # cover-crop, never stretch
+    screen = cover(photo, qw, qh)
     screen = screen.crop(((screen.width - qw) // 2, (screen.height - qh) // 2,
                           (screen.width - qw) // 2 + qw,
                           (screen.height - qh) // 2 + qh))
     screen = ImageEnhance.Brightness(screen).enhance(SCREEN_BRIGHTEN)
     mask = Image.new('L', (qw, qh), 0)
     ImageDraw.Draw(mask).rectangle(
-        [0, 0, qw - 1, qh - 1], fill=255)  # square corners, per review
-    canvas.paste(screen, (round(left), round(top)), mask)
+        [0, 0, qw - 1, qh - 1], fill=255)  # square corners: the body's
+    canvas.paste(screen, (round(left), round(top)), mask)  # bezel masks them
+    # top layer: body with the punched window
+    canvas.paste(body, (bx, by), body)
 
     # 4. text lines, centered below body
     focal = (exif['focal'] if focal_mode == 'actual'

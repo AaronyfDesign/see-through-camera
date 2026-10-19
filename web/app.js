@@ -1,9 +1,10 @@
 /* app.js — see-through-camera, browser port of cli/watermark.py.
  *
  * Pipeline parity with the Python version:
- *   EXIF -> orientation normalize -> cover+blur+darken bg -> body layer
- *   (portrait: rotate visual-CCW, grip up; quad remap) -> screen paste
- *   (cover-crop, square corners) -> two centered text lines -> JPEG.
+ *   EXIF -> orientation normalize -> cover+blur+darken bg -> layer sandwich
+ *   (photo middle layer, body top layer with a transparent window punched
+ *   at the screen quad; portrait: rotate visual-CCW, quad remap) -> two
+ *   centered text lines -> JPEG.
  *
  * Mobile compatibility:
  *   - decode via <img> + object URL (createImageBitmap+options is missing on
@@ -222,22 +223,59 @@ async function render() {
   ctx.fillStyle = `rgba(0,0,0,${1 - BG_DARKEN})`;
   ctx.fillRect(0, 0, cw, ch);
 
-  // 2. body layer; portrait: rotate visual-CCW (grip up), remap quad
+  // 2+3. layer sandwich: photo (middle) UNDER the body (top). The body
+  //      canvas gets a transparent window punched at the screen quad, so
+  //      the bezel masks any paste overflow; the paste rect is the quad
+  //      expanded a few px, clamped to the body's opaque silhouette.
   const bodyImg = body.prof.gray ? grayCanvas(body.png) : body.png;
   let quad = body.quad.map(p => p.slice());
   const bw0 = bodyImg.width, bh0 = bodyImg.height;
   const portrait = ch >= cw;
+
+  // opaque bbox of the body (for clamping the paste expansion)
+  const bb = document.createElement('canvas');
+  bb.width = bw0; bb.height = bh0;
+  const bbg = bb.getContext('2d');
+  bbg.drawImage(bodyImg, 0, 0);
+  const bd = bbg.getImageData(0, 0, bw0, bh0).data;
+  let bx0 = bw0, by0 = bh0, bx1 = 0, by1 = 0;
+  for (let y = 0; y < bh0; y++) {
+    for (let x = 0; x < bw0; x++) {
+      if (bd[(y * bw0 + x) * 4 + 3] > 10) {
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y; if (y > by1) by1 = y;
+      }
+    }
+  }
+  // punch the window: quad inset 2px, rounded like the real glass
+  const xs0 = quad.map(p => p[0]), ys0 = quad.map(p => p[1]);
+  const ql = Math.min(...xs0), qt = Math.min(...ys0);
+  const qr = Math.max(...xs0), qb = Math.max(...ys0);
+  const inset = 2, rad = Math.max(4, Math.round((qr - ql) * 0.03));
+  bbg.globalCompositeOperation = 'destination-out';
+  bbg.beginPath();
+  bbg.roundRect(ql + inset, qt + inset, qr - ql - 2 * inset,
+                qb - qt - 2 * inset, rad);
+  bbg.fill();
+  bbg.globalCompositeOperation = 'source-over';
+  // expanded paste quad, clamped to the silhouette
+  const exp = 6;
+  const el = Math.min(exp, ql - bx0), et = Math.min(exp, qt - by0);
+  const er = Math.min(exp, bx1 - qr), eb = Math.min(exp, by1 - qb);
+  let pquad = [[ql - el, qt - et], [qr + er, qt - et],
+               [qr + er, qb + eb], [ql - el, qb + eb]];
+
   const drawn = document.createElement('canvas');
   const dctx = drawn.getContext('2d');
   if (portrait) {
     drawn.width = bh0; drawn.height = bw0;
     dctx.translate(0, bw0);
     dctx.rotate(-Math.PI / 2);
-    dctx.drawImage(bodyImg, 0, 0);
-    quad = quad.map(([x, y]) => [y, bw0 - x]);
+    dctx.drawImage(bb, 0, 0);
+    pquad = pquad.map(([x, y]) => [y, bw0 - x]);
   } else {
     drawn.width = bw0; drawn.height = bh0;
-    dctx.drawImage(bodyImg, 0, 0);
+    dctx.drawImage(bb, 0, 0);
   }
   const topMargin = Math.round(ch * BODY_TOP_FRAC);
   const textZone = 56 + GAP_LINE + LINE2_SIZE + 30;
@@ -249,11 +287,12 @@ async function render() {
   // always centered: horizontally on the canvas, vertically between the
   // top margin and the caption zone
   const by = topMargin + Math.round((ch - topMargin - textZone - bh) / 2);
-  ctx.drawImage(drawn, bx, by, bw, bh);   // body first: its LCD is opaque
 
-  // 3. screen paste (cover-crop, square corners), scale vs pre-resize width
+  // middle layer: screen paste (cover-crop, square corners — the body's
+  // bezel masks them), scale vs pre-resize width; per-body zoom falls out
+  // of the quad size automatically
   const s = bw / drawn.width;
-  const xs = quad.map(p => p[0]), ys = quad.map(p => p[1]);
+  const xs = pquad.map(p => p[0]), ys = pquad.map(p => p[1]);
   const left = Math.min(...xs) * s + bx, top = Math.min(...ys) * s + by;
   const qw = Math.round((Math.max(...xs) - Math.min(...xs)) * s);
   const qh = Math.round((Math.max(...ys) - Math.min(...ys)) * s);
@@ -270,6 +309,8 @@ async function render() {
     ctx.fillRect(left, top, qw, qh);
   }
   ctx.restore();
+  // top layer: body with the punched window
+  ctx.drawImage(drawn, bx, by, bw, bh);
 
   // 4. caption lines, pinned to the card bottom, auto-shrink on overflow;
   const parts1 = [];
