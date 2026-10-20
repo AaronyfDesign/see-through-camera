@@ -1,128 +1,136 @@
 #!/usr/bin/env python3
-"""Calibrate an LCD screen quad from a body render (smooth-dark run method).
+"""Read an existing rectangular LCD cutout from PNG alpha, never dark glass.
 
-The screen on a product render is a large, smooth, near-black rectangle.
-Body leather has texture, buttons have bright icons — so a pixel is
-screen-ish when it is dark AND locally flat. Per row we take the longest
-consecutive screen-ish run; rows whose run exceeds 35% of the width form
-the screen band; run start/end medians give the column bounds.
-
-Usage: python3 calibrate.py <body_dir> [--rotate-ccw]
-Writes profile.json (if valid) and calibrate_debug.png.
+Usage: calibrate.py [body_dir] --output <new-evidence-directory>
+With no body_dir, inspect every profile except lego and zfc. This command
+only writes evidence; it never changes a source PNG or profile.json.
 """
+import argparse
+import hashlib
 import json
-import statistics
-import sys
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw
 
-MIN_RUN_FRAC = 0.30
+ROOT = Path(__file__).resolve().parent.parent
 
 
-def luminance_map(img):
-    w, h = img.size
-    px = img.load()
-    lum = [[0] * w for _ in range(h)]
-    for y in range(h):
-        row = lum[y]
-        for x in range(w):
-            r, g, b = px[x, y][:3]
-            row[x] = (r * 299 + g * 587 + b * 114) // 1000
-    return lum, w, h
+def transparent_window(image, search_quad):
+    """Find a dominant, fully transparent rectangular component inside the ROI.
+
+    The existing quad is ONLY a search region, not a calibration reference.
+    A surrounding nonzero-alpha ring proves the result was not truncated by
+    that ROI. Small disconnected transparent lettering is reported separately.
+    Fail rather than guess if the component is irregular, open, or ambiguous.
+    """
+    alpha = np.array(image.convert('RGBA').getchannel('A'))
+    xs, ys = zip(*search_quad)
+    l, t, r, b = min(xs), min(ys), max(xs), max(ys)
+    if any(int(v) != v for v in (l, t, r, b)):
+        raise ValueError('search bounds must be integer pixel edges')
+    l, t, r, b = map(int, (l, t, r, b))
+    if not (0 <= l < r <= image.width and 0 <= t < b <= image.height):
+        raise ValueError('search bounds outside source image')
+    remaining = (alpha[t:b, l:r] == 0).astype(np.uint8) * 255
+    components = []
+    while np.any(remaining):
+        yy, xx = np.nonzero(remaining)
+        mask = Image.fromarray(remaining).copy()
+        ImageDraw.floodfill(mask, (int(xx[0]), int(yy[0])), 128)
+        component = np.array(mask) == 128
+        yy, xx = np.nonzero(component)
+        bounds = [int(xx.min()) + l, int(yy.min()) + t,
+                  int(xx.max()) + l + 1, int(yy.max()) + t + 1]
+        pixels = int(component.sum())
+        area = (bounds[2] - bounds[0]) * (bounds[3] - bounds[1])
+        components.append({'bounds': bounds, 'pixels': pixels,
+                           'rectangular': pixels == area})
+        remaining[component] = 0
+    if not components:
+        raise ValueError('no alpha=0 component; refusing to infer a dark-glass boundary')
+    components.sort(key=lambda item: item['pixels'], reverse=True)
+    window = components[0]
+    if not window['rectangular']:
+        raise ValueError('largest transparent component is not a complete rectangle')
+    if len(components) > 1 and components[1]['pixels'] * 10 >= window['pixels']:
+        raise ValueError('multiple substantial holes; manual selection required')
+    left, top, right, bottom = window['bounds']
+    if left == 0 or top == 0 or right == image.width or bottom == image.height:
+        raise ValueError('transparent component reaches the image boundary')
+    ring = np.concatenate((alpha[top - 1, left:right], alpha[bottom, left:right],
+                           alpha[top:bottom, left - 1], alpha[top:bottom, right]))
+    if np.any(ring == 0):
+        raise ValueError('transparent component is open or truncated by the search bounds')
+    quad = [[left, top], [right, top], [right, bottom], [left, bottom]]
+    return {
+        'screen_quad': quad, 'bounds': window['bounds'],
+        'size': [right - left, bottom - top],
+        'transparent_window_pixels': window['pixels'],
+        'nontransparent_pixels_inside_window': int(np.count_nonzero(alpha[top:bottom, left:right])),
+        'surrounding_ring_min_alpha': int(ring.min()),
+        'search_quad': search_quad,
+        'old_quad_nontransparent_pixels': int(np.count_nonzero(alpha[t:b, l:r])),
+        'old_to_inner_ltrb_px': [left - l, top - t, r - right, b - bottom],
+        'other_transparent_components': components[1:],
+    }
 
 
-def smooth_dark_mask(lum, w, h):
-    """dark AND flat in a 5x5 neighborhood (screen interior, not texture)."""
-    m = [[False] * w for _ in range(h)]
-    for y in range(2, h - 2):
-        for x in range(2, w - 2):
-            c = lum[y][x]
-            if c >= 80:
-                continue
-            flat = True
-            for dy in (-2, 0, 2):
-                for dx in (-2, 0, 2):
-                    if abs(lum[y + dy][x + dx] - c) > 6:
-                        flat = False
-                        break
-                if not flat:
-                    break
-            m[y][x] = flat
-    return m
-
-
-def longest_run(bools):
-    best = (0, 0, 0)  # length, start, end(inclusive)
-    s = None
-    for i, v in enumerate(bools + [False]):
-        if v and s is None:
-            s = i
-        elif not v and s is not None:
-            if i - s > best[0]:
-                best = (i - s, s, i - 1)
-            s = None
-    return best
-
-
-def calibrate(img):
-    lum, w, h = luminance_map(img)
-    m = smooth_dark_mask(lum, w, h)
-    # per-row longest run of screen-ish pixels
-    screen_rows = []  # (y, start, end)
-    for y in range(h):
-        ln, s, e = longest_run(m[y])
-        if ln > w * MIN_RUN_FRAC:
-            screen_rows.append((y, s, e))
-    if not screen_rows:
-        return None, None, m
-    # largest contiguous band of screen rows (gap tolerance 6 rows)
-    bands, cur = [], [screen_rows[0]]
-    for item in screen_rows[1:]:
-        if item[0] - cur[-1][0] <= 6:
-            cur.append(item)
-        else:
-            bands.append(cur)
-            cur = [item]
-    bands.append(cur)
-    band = max(bands, key=lambda b: b[-1][0] - b[0][0])
-    y0, y1 = band[0][0], band[-1][0]
-    starts = [s for _, s, _ in band]
-    ends = [e for _, _, e in band]
-    x0 = int(statistics.median(starts))
-    x1 = int(statistics.median(ends))
-    # refine y bounds per column within [x0, x1]
-    col_screen_ys = []
-    for x in range(x0, x1 + 1, 4):
-        col = [y for y in range(max(0, y0 - 30), min(h, y1 + 31))
-               if m[y][x]]
-        if col:
-            col_screen_ys.append((min(col), max(col)))
-    if col_screen_ys:
-        y0 = int(statistics.median(c[0] for c in col_screen_ys))
-        y1 = int(statistics.median(c[1] for c in col_screen_ys))
-    return (x0, y0, x1, y1), band, m
+def export_evidence(profile_dirs, output):
+    if output.exists():
+        raise ValueError(f'output already exists: {output}')
+    records = []
+    # Complete detection first; do not silently emit a partial success pack.
+    for directory in profile_dirs:
+        profile_path = directory / 'profile.json'
+        prof = json.loads(profile_path.read_text())
+        for color, cw in [(None, {})] + list(prof.get('colorways', {}).items()):
+            effective = {**prof, **cw}
+            png = directory / effective['png']
+            with Image.open(png) as image:
+                record = transparent_window(image, effective['screen_quad'])
+            records.append({**record, 'body': directory.name, 'colorway': color,
+                            'variant': directory.name + (f'_{color}' if color else ''),
+                            'png': str(png.resolve()),
+                            'png_sha256': hashlib.sha256(png.read_bytes()).hexdigest()})
+    output.mkdir(parents=True)
+    for record in records:
+        folder = output / record['variant']
+        folder.mkdir()
+        with Image.open(record['png']) as image:
+            body = image.convert('RGBA')
+        source = Image.new('RGBA', body.size, (36, 36, 34, 255))
+        source.alpha_composite(body)
+        source = source.convert('RGB')
+        source.save(folder / 'source.png')
+        draw = ImageDraw.Draw(source)
+        l, t, r, b = record['bounds']
+        draw.rectangle([l, t, r - 1, b - 1], outline=(255, 0, 0), width=2)
+        source.save(folder / 'inner_quad.png')
+        body.getchannel('A').save(folder / 'source_alpha.png')
+        print(record['variant'], record['bounds'], 'size', record['size'],
+              'old erased nontransparent pixels', record['old_quad_nontransparent_pixels'])
+    report = {'method': 'Largest enclosed alpha=0 component, complete rectangle required.',
+              'coordinate_convention': 'Pixel edges; right and bottom exclusive.',
+              'source_pngs_modified': False, 'profiles_modified': False,
+              'variants': records}
+    (output / 'geometry.json').write_text(json.dumps(report, indent=2) + '\n')
+    print(f'{len(records)} variants -> {output / "geometry.json"}')
 
 
 def main():
-    body_dir = Path(sys.argv[1])
-    rotate = '--rotate-ccw' in sys.argv
-    img = Image.open(body_dir / 'body.png').convert('RGB')
-    if rotate:
-        img = img.transpose(Image.ROTATE_90)
-    bbox, band, m = calibrate(img)
-    if bbox is None:
-        print('FAIL: no smooth dark screen region found')
-        sys.exit(1)
-    x0, y0, x1, y1 = bbox
-    qw, qh = x1 - x0 + 1, y1 - y0 + 1
-    print(f'quad: [[{x0}, {y0}], [{x1}, {y0}], [{x1}, {y1}], [{x0}, {y1}]]')
-    print(f'size: {qw}x{qh}  aspect={qw / qh:.3f}  body={img.width}x{img.height}')
-    dbg = img.copy()
-    d = ImageDraw.Draw(dbg)
-    d.rectangle([x0, y0, x1, y1], outline=(255, 40, 40), width=3)
-    dbg.save(body_dir / 'calibrate_debug.png')
-    print(f"debug -> {body_dir / 'calibrate_debug.png'}")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('body_dir', type=Path, nargs='?')
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--exclude', nargs='*', default=['lego', 'zfc'])
+    args = parser.parse_args()
+    directories = ([args.body_dir] if args.body_dir else
+                   [p.parent for p in sorted((ROOT / 'body_profiles').glob('*/profile.json'))
+                    if p.parent.name not in args.exclude])
+    try:
+        export_evidence(directories, args.output.resolve())
+    except (ValueError, FileNotFoundError) as exc:
+        parser.error(str(exc))
 
 
 if __name__ == '__main__':

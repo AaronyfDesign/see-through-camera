@@ -3,14 +3,15 @@
 
 W-M1 scope: single-body pipeline, profile-driven from day one.
   photo EXIF -> orientation normalize -> blurred bg canvas -> body image
-  -> photo pasted into LCD (rect + rounded corners; perspective is a W-M3
-  upgrade) -> two centered text lines -> JPEG out.
+  -> photo under a square-cornered LCD window -> two centered text lines
+  -> JPEG out.
 
 Discipline (inherited from S10): missing EXIF fields are a hard error, never
 silently defaulted. Unknown body model -> error listing available profiles.
 """
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -109,7 +110,12 @@ def cover(img, w, h):
 
 
 def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
-          colorway=None):
+          colorway=None, *, screen_quad=None):
+    """Render a card; an optional in-memory quad never changes the profile.
+
+    Return the actual layout for candidate annotations and measurements.
+    Window bounds are edge coordinates: right/bottom are exclusive.
+    """
     photo = Image.open(photo_path)
     exif = read_exif(photo)
     body_key, prof = load_profile(body_key, exif['model'])
@@ -123,6 +129,8 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         if cw.get('screen_quad'):
             prof['screen_quad'] = cw['screen_quad']
     prof = {**prof, 'png': profile_png(PROFILES_DIR, body_key, prof)}
+    if screen_quad is not None:
+        prof['screen_quad'] = screen_quad
 
     photo = ImageOps.exif_transpose(photo).convert('RGB')  # orientation -> 1
     # canvas mirrors the photo's aspect ratio exactly
@@ -158,6 +166,7 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         body = Image.merge('RGBA', (*rgb.split(), a))
     qx, qy = zip(*prof['screen_quad'])
     ql, qt, qr, qb = min(qx), min(qy), max(qx), max(qy)
+    window_quad = [[ql, qt], [qr, qt], [qr, qb], [ql, qb]]
     # window: EXACTLY the screen quad, square corners — the photo fills
     # the cut-out completely: no overflow, no unlit ring, no rounding.
     alpha = body.getchannel('A')
@@ -180,7 +189,8 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         bw0 = body.width
         body = body.transpose(Image.ROTATE_90)
         quad = [[y, bw0 - x] for (x, y) in quad]
-    orig_w = body.width
+        window_quad = [[y, bw0 - x] for (x, y) in window_quad]
+    orig_w, orig_h = body.size
     # fit both axes: 80% width cap, plus height cap reserving the text zone
     top_margin = round(canvas_h * BODY_TOP_FRAC)
     text_zone = 56 + GAP_LINE + LINE2_SIZE + 30
@@ -235,10 +245,21 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
                   fill=TEXT_COLOR)
         y += GAP_LINE
 
+    # The requested cut-out follows the body's two actual axis scales.
+    # Existing PNG transparency can also remain outside this rectangle;
+    # neither that transparency nor the bleed is part of this annotation.
+    wx, wy = zip(*window_quad)
+    window_rect = [min(wx) * bw / orig_w + bx,
+                   min(wy) * bh / orig_h + by,
+                   max(wx) * bw / orig_w + bx,
+                   max(wy) * bh / orig_h + by]
+
     if debug:  # quad overlay for calibration (saved separately, never
                # clobbering the clean render)
         dbg = canvas.copy()
-        ImageDraw.Draw(dbg).rectangle([left, top, right, bottom],
+        pixel_bounds = [math.floor(window_rect[0]), math.floor(window_rect[1]),
+                        math.ceil(window_rect[2]) - 1, math.ceil(window_rect[3]) - 1]
+        ImageDraw.Draw(dbg).rectangle(pixel_bounds,
                                       outline=(255, 0, 0), width=3)
         dbg_path = out_path.with_name(out_path.stem + '_debug.jpg')
         dbg_path.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +268,11 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
     out_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(out_path, quality=93)
     print(f'{exif["model"]} | {line1}\n{line2}\n-> {out_path}')
+    return {'canvas_size': [canvas_w, canvas_h],
+            'body_rect': [bx, by, bx + bw, by + bh],
+            'window_rect': window_rect,
+            'paste_rect': [left, top, right, bottom],
+            'screen_quad': prof['screen_quad']}
 
 
 def main():
