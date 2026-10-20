@@ -109,8 +109,26 @@ def cover(img, w, h):
                       Image.LANCZOS)
 
 
+def _radial_blur_mask(w, h, cx, cy, inner=0.42, outer=0.85):
+    """L mask for the radial background: 255 where the blurred layer shows
+    (rim), 0 inside `inner` of the max radius around (cx, cy), feathered in
+    between; full blur from `outer` out so the rim never ghosts."""
+    step = 8
+    gw, gh = max(2, w // step), max(2, h // step)
+    r_max = math.hypot(max(cx, w - cx), max(cy, h - cy))
+    m = Image.new('L', (gw, gh))
+    mp = m.load()
+    for gy in range(gh):
+        for gx in range(gw):
+            d = math.hypot(gx * step + step / 2 - cx,
+                           gy * step + step / 2 - cy) / r_max
+            t = (d - inner) / (outer - inner)
+            mp[gx, gy] = round(255 * min(1.0, max(0.0, t)))
+    return m.resize((w, h), Image.BILINEAR)
+
+
 def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
-          colorway=None, *, screen_quad=None):
+          colorway=None, bg_mode='soft', *, screen_quad=None):
     """Render a card; an optional in-memory quad never changes the profile.
 
     Return the actual layout for candidate annotations and measurements.
@@ -141,15 +159,6 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         canvas_h = CANVAS_LONG
         canvas_w = max(1, round(CANVAS_LONG * photo.width / photo.height))
     canvas = Image.new('RGB', (canvas_w, canvas_h))
-
-    # 1. background: cover + blur + darken
-    bg = cover(photo, canvas_w, canvas_h)
-    bg = bg.crop(((bg.width - canvas_w) // 2, (bg.height - canvas_h) // 2,
-                  (bg.width - canvas_w) // 2 + canvas_w,
-                  (bg.height - canvas_h) // 2 + canvas_h))
-    bg = bg.filter(ImageFilter.GaussianBlur(canvas_w * BG_BLUR_FRAC))
-    bg = ImageEnhance.Brightness(bg).enhance(BG_DARKEN)
-    canvas.paste(bg, (0, 0))
 
     # 2+3. layer sandwich: photo (middle) UNDER the body (top). The body
     #      gets a transparent window punched at the screen quad at runtime,
@@ -203,6 +212,25 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
     # always centered: horizontally on the canvas, vertically between the
     # top margin and the caption zone
     by = top_margin + (canvas_h - top_margin - text_zone - bh) // 2
+
+    # 1. background: soft (blur+darken, default) / radial / solid. Radial
+    #    keeps the area behind the body sharp and blur grows to the rim.
+    bg = cover(photo, canvas_w, canvas_h)
+    bg = bg.crop(((bg.width - canvas_w) // 2, (bg.height - canvas_h) // 2,
+                  (bg.width - canvas_w) // 2 + canvas_w,
+                  (bg.height - canvas_h) // 2 + canvas_h))
+    if bg_mode == 'solid':
+        avg = photo.resize((1, 1), Image.LANCZOS).getpixel((0, 0))
+        bg = Image.new('RGB', (canvas_w, canvas_h), avg)
+    elif bg_mode == 'radial':
+        blurred = bg.filter(ImageFilter.GaussianBlur(canvas_w * BG_BLUR_FRAC))
+        mask = _radial_blur_mask(canvas_w, canvas_h,
+                                 bx + bw / 2, by + bh / 2)
+        bg = Image.composite(blurred, bg, mask)
+    else:
+        bg = bg.filter(ImageFilter.GaussianBlur(canvas_w * BG_BLUR_FRAC))
+    bg = ImageEnhance.Brightness(bg).enhance(BG_DARKEN)
+    canvas.paste(bg, (0, 0))
 
     # middle layer: screen paste, cover-crop, never stretch. Per-body zoom
     # falls out of the quad size automatically.
@@ -285,11 +313,13 @@ def main():
     ap.add_argument('--colorway', default=None,
                     help='optional colorway key (e.g. black) if the profile '
                          'defines one')
+    ap.add_argument('--bg', choices=['soft', 'radial', 'solid'], default='soft',
+                    help='background treatment (default: soft blur)')
     ap.add_argument('--debug', action='store_true',
                     help='also save a quad-outline overlay for calibration')
     a = ap.parse_args()
     out = a.output or OUT_DEFAULT / 's11' / f'{a.input.stem}_wm.jpg'
-    build(a.input, a.body, out, a.focal, a.debug, a.colorway)
+    build(a.input, a.body, out, a.focal, a.debug, a.colorway, a.bg)
 
 
 if __name__ == '__main__':

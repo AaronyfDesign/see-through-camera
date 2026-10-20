@@ -80,7 +80,8 @@ const $ = (id) => document.getElementById(id);
 const els = {
   drop: $('drop'), file: $('file'), previewWrap: $('previewWrap'),
   preview: $('preview'), err: $('err'), controls: $('controls'),
-  bodySel: $('bodySel'), cwSeg: $('cwSeg'), repick: $('repick'), save: $('save'),
+  bodySel: $('bodySel'), cwSeg: $('cwSeg'), bgSeg: $('bgSeg'),
+  repick: $('repick'), save: $('save'),
   loading: $('loading'),
   uploadSuccess: $('uploadSuccess'), uploadSuccessFile: $('uploadSuccessFile'),
 };
@@ -90,6 +91,7 @@ let state = {
   params: null,      // partial: any of model/lens/focal/expo/fnum/iso
   bodyKey: 'lego',   // user-selected body (default: toy camera)
   colorway: 'silver',// silver | black; only used by bodies with colorways
+  bgMode: 'soft',    // soft | radial | solid (background treatment)
   card: null,        // rendered canvas
 };
 
@@ -214,17 +216,6 @@ async function render() {
   card.width = cw; card.height = ch;
   const ctx = card.getContext('2d');
 
-  // 1. background: cover + blur + darken
-  if (FILTER_OK) {
-    ctx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
-    drawCoverOverscan(ctx, img, cw, ch, Math.ceil(cw * BG_BLUR_FRAC * 3));
-    ctx.filter = 'none';
-  } else {
-    drawCoverBlurFallback(ctx, img, cw, ch);
-  }
-  ctx.fillStyle = `rgba(0,0,0,${1 - BG_DARKEN})`;
-  ctx.fillRect(0, 0, cw, ch);
-
   // 2+3. layer sandwich: photo (middle) UNDER the body (top). The body
   //      canvas gets a transparent window punched EXACTLY at the screen
   //      quad (square corners) — the photo fills the cut-out completely;
@@ -290,6 +281,9 @@ async function render() {
   // top margin and the caption zone
   const by = topMargin + Math.round((ch - topMargin - textZone - bh) / 2);
 
+  // 1. background (needs the body center as the radial-focus point)
+  drawBackground(ctx, img, cw, ch, bx + bw / 2, by + bh / 2);
+
   // middle layer: screen paste (cover-crop, square corners — the body's
   // bezel masks them), scale vs pre-resize width; per-body zoom falls out
   // of the quad size automatically
@@ -351,10 +345,73 @@ async function render() {
 
 // cover variant with overscan so the blur filter never reveals raw edges
 function drawCoverOverscan(ctx, img, w, h, margin) {
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   const x = -margin, y = -margin, bw = w + margin * 2, bh = h + margin * 2;
   const s = Math.max(bw / img.width, bh / img.height);
   const dw = img.width * s, dh = img.height * s;
   ctx.drawImage(img, x + (bw - dw) / 2, y + (bh - dh) / 2, dw, dh);
+}
+
+// background modes (state.bgMode):
+//   soft   — uniform gaussian blur + darken (original look, default)
+//   radial — sharp base, blur layer masked by a radial gradient centered on
+//            the body: clear behind the body, blur grows toward the edges
+//   solid  — flat fill with the photo's average color (1x1 downsample)
+function drawBackground(ctx, img, cw, ch, cx, cy) {
+  if (state.bgMode === 'solid') {
+    // NB: drawing straight into a 1x1 canvas point-samples in some engines
+    // instead of averaging; 8x8 + mean is a real average
+    const s = document.createElement('canvas');
+    s.width = 8; s.height = 8;
+    const sc = s.getContext('2d');
+    sc.drawImage(img, 0, 0, 8, 8);
+    const d = sc.getImageData(0, 0, 8, 8).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      r += d[i]; g += d[i + 1]; b += d[i + 2];
+    }
+    const n = d.length / 4;
+    ctx.fillStyle = `rgb(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)})`;
+    ctx.fillRect(0, 0, cw, ch);
+  } else if (state.bgMode === 'radial') {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    drawCoverOverscan(ctx, img, cw, ch, 0);
+    const off = document.createElement('canvas');
+    off.width = cw; off.height = ch;
+    const octx = off.getContext('2d');
+    if (FILTER_OK) {
+      octx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
+      drawCoverOverscan(octx, img, cw, ch, Math.ceil(cw * BG_BLUR_FRAC * 3));
+      octx.filter = 'none';
+    } else {
+      drawCoverBlurFallback(octx, img, cw, ch);
+    }
+    // erase the blur layer toward the center so the sharp base shows
+    // through: fully erased inside, feathering out to full blur at 85% of
+    // the max radius (rim is always fully blurred — no ghost detail)
+    const rMax = Math.hypot(Math.max(cx, cw - cx), Math.max(cy, ch - cy));
+    const grad = octx.createRadialGradient(cx, cy, 0, cx, cy, rMax);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.42, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.85, 'rgba(0,0,0,0)');
+    octx.globalCompositeOperation = 'destination-out';
+    octx.fillStyle = grad;
+    octx.fillRect(0, 0, cw, ch);
+    octx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(off, 0, 0);
+  } else { // soft (default)
+    if (FILTER_OK) {
+      ctx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
+      drawCoverOverscan(ctx, img, cw, ch, Math.ceil(cw * BG_BLUR_FRAC * 3));
+      ctx.filter = 'none';
+    } else {
+      drawCoverBlurFallback(ctx, img, cw, ch);
+    }
+  }
+  ctx.fillStyle = `rgba(0,0,0,${1 - BG_DARKEN})`;
+  ctx.fillRect(0, 0, cw, ch);
 }
 
 // ---------- errors ----------
@@ -492,6 +549,23 @@ els.bodySel.addEventListener('change', () => {
     renderFromState().catch(showError).finally(() => setLoading(false));
   }
 });
+// ---------- background mode toggle ----------
+function syncBgSeg() {
+  for (const btn of els.bgSeg.querySelectorAll('button')) {
+    btn.classList.toggle('on', btn.dataset.bg === state.bgMode);
+  }
+}
+els.bgSeg.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-bg]');
+  if (!btn || state.bgMode === btn.dataset.bg) return;
+  state.bgMode = btn.dataset.bg;
+  syncBgSeg();
+  if (state.img) {
+    setLoading(true);
+    renderFromState().catch(showError).finally(() => setLoading(false));
+  }
+});
+
 els.cwSeg.addEventListener('click', e => {
   const btn = e.target.closest('button[data-cw]');
   if (!btn || state.colorway === btn.dataset.cw) return;
@@ -530,3 +604,4 @@ els.save.addEventListener('click', () => {
 });
 
 buildSel();
+syncBgSeg();

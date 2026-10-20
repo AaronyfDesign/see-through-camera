@@ -30,7 +30,7 @@ pip install pillow
 python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 ```
 
-The body is matched automatically from the photo's EXIF model field; `--body` overrides it. Output lands in `output/` next to the photo's name.
+The body is matched automatically from the photo's EXIF model field; `--body` overrides it. Output lands in `output/` next to the photo's name. Optional `--bg soft|radial|solid` picks the background treatment (uniform blur — default, radial blur sharp behind the body, or a flat fill of the photo's average color).
 
 ## Status
 

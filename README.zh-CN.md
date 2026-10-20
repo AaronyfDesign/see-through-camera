@@ -30,7 +30,7 @@ pip install pillow
 python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 ```
 
-机身根据照片 EXIF 机型字段自动匹配，`--body` 可强制指定；输出保存在 `output/` 目录。
+机身根据照片 EXIF 机型字段自动匹配，`--body` 可强制指定；输出保存在 `output/` 目录。可选 `--bg soft|radial|solid` 选择背景处理方式（柔和虚化——默认、径向模糊——机身后面保持清晰边缘渐强虚化、纯色填充——照片平均色平铺）。
 
 ## 进度
 
