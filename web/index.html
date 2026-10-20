@@ -53,6 +53,21 @@
        color:#14181d;font:inherit;font-size:14px;padding:8px 20px;cursor:pointer}
   .btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
   .spacer{flex:1}
+
+  /* explicit acknowledgement after a photo has been processed */
+  #uploadSuccess{width:min(420px,calc(100% - 40px));max-height:calc(100dvh - 40px);
+                 padding:28px;border:1px solid var(--line);border-radius:12px;
+                 background:var(--panel);color:var(--ink);font:inherit;
+                 box-shadow:0 24px 80px rgba(0,0,0,.5);overflow:auto}
+  #uploadSuccess::backdrop{background:rgba(0,0,0,.65)}
+  #uploadSuccess h2{margin:0 0 12px;font-size:20px;font-weight:600}
+  #uploadSuccess p{margin:8px 0}
+  #uploadSuccessFile{color:var(--dim);font-size:13px;overflow-wrap:anywhere}
+  #uploadSuccessPrivacy{color:var(--dim);font-size:13px}
+  #uploadSuccess form{display:flex;justify-content:flex-end;margin-top:24px}
+  #uploadSuccess .btn{min-width:96px;min-height:44px}
+  #uploadSuccess .btn:focus-visible{outline:2px solid var(--ink);outline-offset:4px}
+
   footer{margin-top:36px;color:#5a626c;font-size:12.5px}
   footer a{color:#7c8792;text-decoration:none}
 </style>
@@ -90,6 +105,16 @@
     <a href="https://github.com/AaronyfDesign/see-through-camera">GitHub</a>
   </footer>
 </main>
+<dialog id="uploadSuccess" closedby="none" aria-labelledby="uploadSuccessTitle"
+        aria-describedby="uploadSuccessMessage uploadSuccessPrivacy">
+  <h2 id="uploadSuccessTitle">图片上传成功</h2>
+  <p id="uploadSuccessFile"></p>
+  <p id="uploadSuccessMessage">照片已读取，回屏卡片已生成。确认后可切换机型或保存卡片。</p>
+  <p id="uploadSuccessPrivacy">照片仅在当前浏览器内处理，不会上传到服务器。</p>
+  <form method="dialog">
+    <button class="btn" type="submit" value="confirm" autofocus>确认</button>
+  </form>
+</dialog>
 <script src="vendor/exifr.full.min.js"></script>
 <script src="app.js"></script>
 </body>

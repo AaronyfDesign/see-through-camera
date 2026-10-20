@@ -81,6 +81,7 @@ const els = {
   drop: $('drop'), file: $('file'), previewWrap: $('previewWrap'),
   preview: $('preview'), err: $('err'), controls: $('controls'),
   bodySel: $('bodySel'), cwSeg: $('cwSeg'), repick: $('repick'), save: $('save'),
+  uploadSuccess: $('uploadSuccess'), uploadSuccessFile: $('uploadSuccessFile'),
 };
 let state = {
   file: null,        // picked File
@@ -364,6 +365,25 @@ function clearError() {
   els.err.style.display = 'none';
 }
 
+// ---------- upload acknowledgement ----------
+function showUploadSuccess(file) {
+  els.uploadSuccessFile.textContent = file.name;
+  if (typeof els.uploadSuccess.showModal !== 'function') {
+    // Older browsers still get an explicit OK acknowledgement.
+    window.alert('图片上传成功\n回屏卡片已生成。照片仅在当前浏览器内处理，不会上传到服务器。');
+    return;
+  }
+  if (!els.uploadSuccess.open) els.uploadSuccess.showModal();
+}
+// Keep the result visible until the user activates the confirmation button.
+els.uploadSuccess.addEventListener('cancel', e => e.preventDefault());
+els.uploadSuccess.addEventListener('keydown', e => {
+  if (e.key === 'Escape') e.preventDefault();
+});
+els.uploadSuccess.addEventListener('close', () => {
+  if (!els.uploadSuccess.open) els.repick.focus();
+});
+
 // ---------- flow ----------
 async function decodeImage(file) {
   const url = URL.createObjectURL(file);
@@ -382,6 +402,7 @@ async function decodeImage(file) {
 
 async function handleFile(file) {
   if (!file) return;
+  if (els.uploadSuccess.open) els.uploadSuccess.close();
   clearError();
   try {
     state.file = file;
@@ -417,6 +438,7 @@ async function handleFile(file) {
     els.drop.style.display = 'none';
     els.previewWrap.style.display = 'block';
     els.controls.style.display = 'flex';
+    showUploadSuccess(file);
   } catch (e) {
     showError(e.message || '处理失败');
   }
