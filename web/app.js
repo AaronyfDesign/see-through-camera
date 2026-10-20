@@ -65,7 +65,7 @@ const BODIES = [
   { key: 'zf',   label: 'Z f',    profile: 'bodies/zf/profile.json',    ready: true,
     hasColorways: true, brand: 'NIKON' },
   { key: 'zfc',  label: 'Z fc',   profile: 'bodies/zfc/profile.json',   ready: true,
-    brand: 'NIKON' },  // black colorway removed upstream; silver only for now
+    hasColorways: true, brand: 'NIKON' },
 ];
 
 const FILTER_OK = (() => {
