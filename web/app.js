@@ -81,6 +81,7 @@ const els = {
   drop: $('drop'), file: $('file'), previewWrap: $('previewWrap'),
   preview: $('preview'), err: $('err'), controls: $('controls'),
   bodySel: $('bodySel'), cwSeg: $('cwSeg'), repick: $('repick'), save: $('save'),
+  loading: $('loading'),
   uploadSuccess: $('uploadSuccess'), uploadSuccessFile: $('uploadSuccessFile'),
 };
 let state = {
@@ -384,6 +385,9 @@ els.uploadSuccess.addEventListener('close', () => {
   if (!els.uploadSuccess.open) els.repick.focus();
 });
 
+// ---------- loading overlay ----------
+function setLoading(on) { els.loading.hidden = !on; }
+
 // ---------- flow ----------
 async function decodeImage(file) {
   const url = URL.createObjectURL(file);
@@ -404,6 +408,7 @@ async function handleFile(file) {
   if (!file) return;
   if (els.uploadSuccess.open) els.uploadSuccess.close();
   clearError();
+  setLoading(true);
   try {
     state.file = file;
     state.img = await decodeImage(file);
@@ -438,8 +443,10 @@ async function handleFile(file) {
     els.drop.style.display = 'none';
     els.previewWrap.style.display = 'block';
     els.controls.style.display = 'flex';
+    setLoading(false);
     showUploadSuccess(file);
   } catch (e) {
+    setLoading(false);
     showError(e.message || '处理失败');
   }
 }
@@ -480,14 +487,20 @@ els.bodySel.addEventListener('change', () => {
   state.bodyKey = els.bodySel.value;
   state.colorway = 'silver';  // reset colorway on body switch
   syncSel();
-  if (state.img) renderFromState().catch(showError);
+  if (state.img) {
+    setLoading(true);
+    renderFromState().catch(showError).finally(() => setLoading(false));
+  }
 });
 els.cwSeg.addEventListener('click', e => {
   const btn = e.target.closest('button[data-cw]');
   if (!btn || state.colorway === btn.dataset.cw) return;
   state.colorway = btn.dataset.cw;
   syncSel();
-  if (state.img) renderFromState().catch(showError);
+  if (state.img) {
+    setLoading(true);
+    renderFromState().catch(showError).finally(() => setLoading(false));
+  }
 });
 
 // ---------- wire up ----------

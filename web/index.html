@@ -54,6 +54,18 @@
   .btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
   .spacer{flex:1}
 
+  /* loading overlay: shown while a photo is decoded / card rendered */
+  #loading{position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;
+           align-items:center;justify-content:center;z-index:60;
+           background:rgba(6,8,10,.55);backdrop-filter:blur(2px)}
+  #loading[hidden]{display:none}
+  #loading .spin{width:44px;height:44px;border-radius:50%;
+           border:3px solid #39414b;border-top-color:#e8ecf1;
+           animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #loading span{color:#cfd6de;font-size:14px;letter-spacing:.05em}
+  @media (prefers-reduced-motion:reduce){#loading .spin{animation-duration:1.6s}}
+
   /* explicit acknowledgement after a photo has been processed */
   #uploadSuccess{width:min(420px,calc(100% - 40px));max-height:calc(100dvh - 40px);
                  padding:28px;border:1px solid var(--line);border-radius:12px;
@@ -115,6 +127,9 @@
     <button class="btn" type="submit" value="confirm" autofocus>确认</button>
   </form>
 </dialog>
+<div id="loading" hidden role="status" aria-live="polite">
+  <div class="spin"></div><span>处理照片中…</span>
+</div>
 <script src="vendor/exifr.full.min.js"></script>
 <script src="app.js"></script>
 </body>
