@@ -129,14 +129,27 @@ def _radial_blur_mask(w, h, cx, cy, inner=0.42, outer=0.85):
 
 
 def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
-          colorway=None, bg_mode='soft', *, screen_quad=None):
+          colorway=None, bg_mode='soft', *, screen_quad=None, meta=None):
     """Render a card; an optional in-memory quad never changes the profile.
 
     Return the actual layout for candidate annotations and measurements.
     Window bounds are edge coordinates: right/bottom are exclusive.
+    `meta` (dict) overrides EXIF — used by the Lightroom plugin, whose
+    JPEG previews carry no EXIF at all.
     """
     photo = Image.open(photo_path)
-    exif = read_exif(photo)
+    if meta:
+        exif = {**meta, 'orientation': meta.get('orientation', 1)}
+        rot = int(meta.get('rotate') or 0)
+        if rot:
+            # LR preview JPEGs come in sensor orientation with no EXIF flag;
+            # `rotate` = clockwise degrees to restore upright.
+            t = {90: Image.ROTATE_270, 180: Image.ROTATE_180,
+                 270: Image.ROTATE_90}.get(rot)
+            if t is not None:
+                photo = photo.transpose(t)
+    else:
+        exif = read_exif(photo)
     body_key, prof = load_profile(body_key, exif['model'])
     if colorway:
         cw = prof.get('colorways', {}).get(colorway)
@@ -321,11 +334,16 @@ def main():
                          'defines one')
     ap.add_argument('--bg', choices=['soft', 'radial', 'solid'], default='soft',
                     help='background treatment (default: soft blur)')
+    ap.add_argument('--meta', default=None,
+                    help='JSON {model,focal,fnum,expo,iso,lens} overriding '
+                         'EXIF (for EXIF-less sources such as LR previews)')
     ap.add_argument('--debug', action='store_true',
                     help='also save a quad-outline overlay for calibration')
     a = ap.parse_args()
     out = a.output or OUT_DEFAULT / 's11' / f'{a.input.stem}_wm.jpg'
-    build(a.input, a.body, out, a.focal, a.debug, a.colorway, a.bg)
+    meta = json.loads(a.meta) if a.meta else None
+    build(a.input, a.body, out, a.focal, a.debug, a.colorway, a.bg,
+          meta=meta)
 
 
 if __name__ == '__main__':
