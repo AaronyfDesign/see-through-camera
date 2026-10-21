@@ -28,6 +28,7 @@ CANVAS_LONG = 1350                       # long edge; short edge follows the
 BODY_WIDTH_FRAC = 0.80                   # body width vs canvas width
 BODY_TOP_FRAC = 0.065
 BG_BLUR_FRAC = 0.007                     # blur radius vs canvas width
+BG_RADIAL_HSCALE = 2.2                   # radial mode: extra horizontal softening
 BG_DARKEN = 0.72
 SCREEN_BRIGHTEN = 1.06
 LINE1_SIZE = 34                          # model · lens (sans)
@@ -223,7 +224,12 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         avg = photo.resize((1, 1), Image.LANCZOS).getpixel((0, 0))
         bg = Image.new('RGB', (canvas_w, canvas_h), avg)
     elif bg_mode == 'radial':
-        blurred = bg.filter(ImageFilter.GaussianBlur(canvas_w * BG_BLUR_FRAC))
+        # stronger blur horizontally: gaussian applied in a horizontally
+        # squeezed space, so sigma_x = BG_RADIAL_HSCALE * sigma_y
+        sw = max(1, round(canvas_w / BG_RADIAL_HSCALE))
+        squeezed = bg.resize((sw, canvas_h), Image.LANCZOS)
+        blurred = squeezed.filter(ImageFilter.GaussianBlur(canvas_w * BG_BLUR_FRAC))
+        blurred = blurred.resize((canvas_w, canvas_h), Image.BILINEAR)
         mask = _radial_blur_mask(canvas_w, canvas_h,
                                  bx + bw / 2, by + bh / 2)
         bg = Image.composite(blurred, bg, mask)
