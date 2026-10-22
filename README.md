@@ -34,8 +34,17 @@ The body is matched automatically from the photo's EXIF model field; `--body` ov
 
 ## Status
 
-- [x] Z6_3 — calibrated
-- [x] ZR / Z5 / Z8 / Z9 / Zf / Zfc — calibrated (LCD quad hand-read from 2× ruler overlays)
+All 17 bodies shipped with the repo are calibrated (body.png + profile.json
+with a verified LCD quad; last cross-checked 2026-10-22):
+
+- Nikon: Z 6III, ZR, Z 5II / Z 5II C, Z 6 / Z 6II, Z 7 / Z 7II,
+  Z 8 / Z 9, Z f / Z fc, Z 5, Z 30, Z 50II
+- Nikon D850
+- LEGO camera (easter egg)
+
+Adding a body = dropping a `body.png` + `profile.json` (LCD quad + EXIF
+aliases) folder under `body_profiles/`; the CLI and the web app pick it up
+automatically.
 
 ## Credits & trademarks
 

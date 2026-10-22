@@ -34,8 +34,16 @@ python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 
 ## 进度
 
-- [x] Z6_3 —— 已标定
-- [x] ZR / Z5 / Z8 / Z9 / Zf / Zfc —— 已标定（LCD 四点经 2 倍标尺放大人工读取）
+仓库内的 17 台机身已全部完成标定（均含 body.png 与校准过的 LCD 四点
+profile，2026-10-22 交叉核对）：
+
+- Nikon：Z 6III、ZR、Z 5II / Z 5II C、Z 6 / Z 6II、Z 7 / Z 7II、
+  Z 8 / Z 9、Z f / Z fc、Z 5、Z 30、Z 50II
+- Nikon D850
+- 乐高相机（彩蛋）
+
+新增机身只需在 `body_profiles/` 下放入 `body.png` + `profile.json`
+（LCD 四点 + EXIF 别名），CLI 与网页端会自动识别。
 
 ## 素材与商标说明
 
