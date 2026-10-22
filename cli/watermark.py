@@ -12,6 +12,7 @@ silently defaulted. Unknown body model -> error listing available profiles.
 import argparse
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -38,6 +39,26 @@ GAP_LINE = 52
 
 FONT_SANS = '/System/Library/Fonts/Helvetica.ttc'
 FONT_MONO = '/System/Library/Fonts/Menlo.ttc'
+
+
+def _first_font(candidates):
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    raise SystemExit('no usable TrueType font found, tried: '
+                     + ', '.join(candidates))
+
+
+if not os.path.isfile(FONT_SANS):        # non-macOS: pick an OS font
+    win = r'C:\Windows\Fonts'
+    FONT_SANS = _first_font([os.path.join(win, 'segoeui.ttf'),
+                             os.path.join(win, 'arial.ttf'),
+                             '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'])
+if not os.path.isfile(FONT_MONO):
+    win = r'C:\Windows\Fonts'
+    FONT_MONO = _first_font([os.path.join(win, 'consola.ttf'),
+                             '/usr/share/fonts/truetype/dejavu/'
+                             'DejaVuSansMono.ttf'])
 
 
 # ---------- EXIF (JPEG APP1 via Pillow; field semantics = S10 exif_info) ----
