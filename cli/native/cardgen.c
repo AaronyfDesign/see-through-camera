@@ -1010,13 +1010,15 @@ static char *exe_dir(void)
     char *buf = xmalloc((size_t)bl + 1);
     WideCharToMultiByte(CP_UTF8, 0, wbuf, (int)n, buf, bl, NULL, NULL);
     buf[bl] = 0;
+#elif defined(__APPLE__)
+    char buf[4096];
+    uint32_t size = sizeof buf;
+    if (_NSGetExecutablePath(buf, &size) != 0) return NULL;
 #else
-    char buf[1024];
+    char buf[4096];
     ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
-    if (n < 0) {
-        uint32_t size = sizeof buf;
-        if (_NSGetExecutablePath(buf, &size) != 0) return NULL;
-    } else buf[n] = 0;
+    if (n < 0) strcpy(buf, ".");
+    else buf[n] = 0;
 #endif
     char *slash = strrchr(buf, '/');
     if (slash) *slash = 0;
