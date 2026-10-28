@@ -215,6 +215,22 @@ static int file_exists(const char *path)
 #endif
 }
 
+/* Check whether path is a directory, using the platform's native metadata API. */
+static int dir_exists(const char *path)
+{
+#ifdef _WIN32
+    int wl = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    wchar_t *wpath = xmalloc((size_t)wl * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, wl);
+    DWORD attr = GetFileAttributesW(wpath);
+    free(wpath);
+    return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+}
+
 /* ------------------------------------------------------- mini JSON parser */
 
 typedef enum { J_NULL, J_BOOL, J_NUM, J_STR, J_ARR, J_OBJ } JType;
@@ -1103,7 +1119,7 @@ int main(int argc, char **argv)
         }
         for (int i = 0; i < nr && !profiles_dir; i++) {
             char *d = roots[i] ? path_join(roots[i], "body_profiles") : strdup("body_profiles");
-            if (file_exists(path_join(d, "lego")) || file_exists(path_join(d, "z63")))
+            if (dir_exists(path_join(d, "lego")) || dir_exists(path_join(d, "z63")))
                 profiles_dir = d;
             else
                 free(d);
@@ -1112,7 +1128,7 @@ int main(int argc, char **argv)
     if (!profiles_dir) profiles_dir = "body_profiles";
     {
         char *probe = path_join(profiles_dir, "lego");
-        if (!file_exists(probe) && !file_exists(path_join(profiles_dir, "z63")))
+        if (!dir_exists(probe) && !dir_exists(path_join(profiles_dir, "z63")))
             die("no body profiles found in", profiles_dir);
         free(probe);
     }
