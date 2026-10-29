@@ -34,8 +34,34 @@ python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 
 ## 进度
 
-- [x] Z6_3 —— 已标定
-- [x] ZR / Z5 / Z8 / Z9 / Zf / Zfc —— 已标定（LCD 四点经 2 倍标尺放大人工读取）
+`body_profiles/` 下的每台机身均附带 `body.png` 与校准过的 LCD 四点
+`profile.json`。下表由 `scripts/gen_body_list.py` 自动生成，请勿手改
+（CI 会在推送时自动刷新）。
+
+<!-- BODY-LIST:START -->
+| body | EXIF alias | LCD quad |
+| --- | --- | --- |
+| d850 | `NIKON D850` | ✓ |
+| lego | — | ✓ |
+| z30 | `NIKON Z 30`, `NIKON Z30` | ✓ |
+| z5 | `NIKON Z 5` | ✓ |
+| z502 | `NIKON Z 50_2`, `NIKON Z50II`, `NIKON Z 50II` | ✓ |
+| z52 | `NIKON Z 5_2`, `NIKON Z5II`, `NIKON Z 5II` | ✓ |
+| z5iic | `NIKON Z 5_2C`, `NIKON Z5_2C`, `NIKON Z5IIC`, `NIKON Z 5IIC` | ✓ |
+| z6 | `NIKON Z 6`, `NIKON Z6` | ✓ |
+| z62 | `NIKON Z 6_2`, `NIKON Z6II`, `NIKON Z 6II` | ✓ |
+| z63 | `NIKON Z6_3`, `NIKON Z 6_3` | ✓ |
+| z7 | `NIKON Z 7`, `NIKON Z7` | ✓ |
+| z72 | `NIKON Z 7_2`, `NIKON Z7II`, `NIKON Z 7II` | ✓ |
+| z8 | `NIKON Z 8` | ✓ |
+| z9 | `NIKON Z 9` | ✓ |
+| zf | `NIKON Z f`, `NIKON Zf` | ✓ |
+| zfc | `NIKON Z fc` | ✓ |
+| zr | `NIKON ZR` | ✓ |
+<!-- BODY-LIST:END -->
+
+新增机身只需在 `body_profiles/` 下放入 `body.png` + `profile.json`
+（LCD 四点 + EXIF 别名），CLI、网页端与这份清单会自动识别。
 
 ## 素材与商标说明
 

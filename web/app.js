@@ -24,6 +24,7 @@ const CANVAS_LONG = 1350;
 const BODY_WIDTH_FRAC = 0.80;
 const BODY_TOP_FRAC = 0.065;
 const BG_BLUR_FRAC = 0.007;
+const BG_RADIAL_HSCALE = 2.2;   // radial mode: extra horizontal softening
 const BG_DARKEN = 0.72;
 const SCREEN_BRIGHTEN = 1.06;
 const LINE1_SIZE = 34, LINE2_SIZE = 30, GAP_LINE = 52;
@@ -375,19 +376,51 @@ function drawBackground(ctx, img, cw, ch, cx, cy) {
     ctx.fillStyle = `rgb(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)})`;
     ctx.fillRect(0, 0, cw, ch);
   } else if (state.bgMode === 'radial') {
+    // stronger blur horizontally: gaussian applied in a horizontally
+    // squeezed space, so sigma_x = BG_RADIAL_HSCALE * sigma_y
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     drawCoverOverscan(ctx, img, cw, ch, 0);
+    const sw = Math.max(1, Math.round(cw / BG_RADIAL_HSCALE));
+    let blurred, srcX, srcW;
+    if (FILTER_OK) {
+      // anisotropic overscan cover: x squeezed by HSCALE, y untouched;
+      // the gaussian then runs in squeezed space, so the effective
+      // horizontal sigma is HSCALE times the vertical one
+      const M = Math.ceil(cw * BG_BLUR_FRAC * 5);
+      const sqw = sw + 2 * Math.ceil(M / BG_RADIAL_HSCALE);
+      const sq = document.createElement('canvas');
+      sq.width = sqw; sq.height = ch;
+      const sqx = sq.getContext('2d');
+      sqx.imageSmoothingEnabled = true;
+      sqx.imageSmoothingQuality = 'high';
+      const s = Math.max((cw + 2 * M) / img.width, (ch + 2 * M) / img.height);
+      const dw = img.width * s, dh = img.height * s;
+      const dx = (-M + (cw + 2 * M - dw) / 2) / BG_RADIAL_HSCALE;
+      const dy = -M + (ch + 2 * M - dh) / 2;
+      sqx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
+      sqx.drawImage(img, dx, dy, dw / BG_RADIAL_HSCALE, dh);
+      sqx.filter = 'none';
+      blurred = sq; srcX = (sqw - sw) / 2; srcW = sw;
+    } else {
+      // legacy (no ctx.filter): isotropic fallback blur, then squeeze and
+      // stretch for a milder horizontal boost
+      const full = document.createElement('canvas');
+      full.width = cw; full.height = ch;
+      drawCoverBlurFallback(full.getContext('2d'), img, cw, ch);
+      const sq = document.createElement('canvas');
+      sq.width = sw; sq.height = ch;
+      const sqx = sq.getContext('2d');
+      sqx.imageSmoothingQuality = 'high';
+      sqx.drawImage(full, 0, 0, sw, ch);
+      blurred = sq; srcX = 0; srcW = sw;
+    }
     const off = document.createElement('canvas');
     off.width = cw; off.height = ch;
     const octx = off.getContext('2d');
-    if (FILTER_OK) {
-      octx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
-      drawCoverOverscan(octx, img, cw, ch, Math.ceil(cw * BG_BLUR_FRAC * 3));
-      octx.filter = 'none';
-    } else {
-      drawCoverBlurFallback(octx, img, cw, ch);
-    }
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(blurred, srcX, 0, srcW, ch, 0, 0, cw, ch);
     // erase the blur layer toward the center so the sharp base shows
     // through: fully erased inside, feathering out to full blur at 85% of
     // the max radius (rim is always fully blurred — no ghost detail)
@@ -400,6 +433,7 @@ function drawBackground(ctx, img, cw, ch, cx, cy) {
     octx.fillStyle = grad;
     octx.fillRect(0, 0, cw, ch);
     octx.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(off, 0, 0);
   } else { // soft (default)
     if (FILTER_OK) {

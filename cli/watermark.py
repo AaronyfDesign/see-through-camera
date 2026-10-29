@@ -12,6 +12,7 @@ silently defaulted. Unknown body model -> error listing available profiles.
 import argparse
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +29,7 @@ CANVAS_LONG = 1350                       # long edge; short edge follows the
 BODY_WIDTH_FRAC = 0.80                   # body width vs canvas width
 BODY_TOP_FRAC = 0.065
 BG_BLUR_FRAC = 0.007                     # blur radius vs canvas width
+BG_RADIAL_HSCALE = 2.2                   # radial mode: extra horizontal softening
 BG_DARKEN = 0.72
 SCREEN_BRIGHTEN = 1.06
 LINE1_SIZE = 34                          # model · lens (sans)
@@ -37,6 +39,26 @@ GAP_LINE = 52
 
 FONT_SANS = '/System/Library/Fonts/Helvetica.ttc'
 FONT_MONO = '/System/Library/Fonts/Menlo.ttc'
+
+
+def _first_font(candidates):
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    raise SystemExit('no usable TrueType font found, tried: '
+                     + ', '.join(candidates))
+
+
+if not os.path.isfile(FONT_SANS):        # non-macOS: pick an OS font
+    win = r'C:\Windows\Fonts'
+    FONT_SANS = _first_font([os.path.join(win, 'segoeui.ttf'),
+                             os.path.join(win, 'arial.ttf'),
+                             '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'])
+if not os.path.isfile(FONT_MONO):
+    win = r'C:\Windows\Fonts'
+    FONT_MONO = _first_font([os.path.join(win, 'consola.ttf'),
+                             '/usr/share/fonts/truetype/dejavu/'
+                             'DejaVuSansMono.ttf'])
 
 
 # ---------- EXIF (JPEG APP1 via Pillow; field semantics = S10 exif_info) ----
@@ -128,14 +150,27 @@ def _radial_blur_mask(w, h, cx, cy, inner=0.42, outer=0.85):
 
 
 def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
-          colorway=None, bg_mode='soft', *, screen_quad=None):
+          colorway=None, bg_mode='soft', *, screen_quad=None, meta=None):
     """Render a card; an optional in-memory quad never changes the profile.
 
     Return the actual layout for candidate annotations and measurements.
     Window bounds are edge coordinates: right/bottom are exclusive.
+    `meta` (dict) overrides EXIF — used by the Lightroom plugin, whose
+    JPEG previews carry no EXIF at all.
     """
     photo = Image.open(photo_path)
-    exif = read_exif(photo)
+    if meta:
+        exif = {**meta, 'orientation': meta.get('orientation', 1)}
+        rot = int(meta.get('rotate') or 0)
+        if rot:
+            # LR preview JPEGs come in sensor orientation with no EXIF flag;
+            # `rotate` = clockwise degrees to restore upright.
+            t = {90: Image.ROTATE_270, 180: Image.ROTATE_180,
+                 270: Image.ROTATE_90}.get(rot)
+            if t is not None:
+                photo = photo.transpose(t)
+    else:
+        exif = read_exif(photo)
     body_key, prof = load_profile(body_key, exif['model'])
     if colorway:
         cw = prof.get('colorways', {}).get(colorway)
@@ -223,7 +258,12 @@ def build(photo_path, body_key, out_path, focal_mode='actual', debug=False,
         avg = photo.resize((1, 1), Image.LANCZOS).getpixel((0, 0))
         bg = Image.new('RGB', (canvas_w, canvas_h), avg)
     elif bg_mode == 'radial':
-        blurred = bg.filter(ImageFilter.GaussianBlur(canvas_w * BG_BLUR_FRAC))
+        # stronger blur horizontally: gaussian applied in a horizontally
+        # squeezed space, so sigma_x = BG_RADIAL_HSCALE * sigma_y
+        sw = max(1, round(canvas_w / BG_RADIAL_HSCALE))
+        squeezed = bg.resize((sw, canvas_h), Image.LANCZOS)
+        blurred = squeezed.filter(ImageFilter.GaussianBlur(canvas_w * BG_BLUR_FRAC))
+        blurred = blurred.resize((canvas_w, canvas_h), Image.BILINEAR)
         mask = _radial_blur_mask(canvas_w, canvas_h,
                                  bx + bw / 2, by + bh / 2)
         bg = Image.composite(blurred, bg, mask)
@@ -315,11 +355,16 @@ def main():
                          'defines one')
     ap.add_argument('--bg', choices=['soft', 'radial', 'solid'], default='soft',
                     help='background treatment (default: soft blur)')
+    ap.add_argument('--meta', default=None,
+                    help='JSON {model,focal,fnum,expo,iso,lens} overriding '
+                         'EXIF (for EXIF-less sources such as LR previews)')
     ap.add_argument('--debug', action='store_true',
                     help='also save a quad-outline overlay for calibration')
     a = ap.parse_args()
     out = a.output or OUT_DEFAULT / 's11' / f'{a.input.stem}_wm.jpg'
-    build(a.input, a.body, out, a.focal, a.debug, a.colorway, a.bg)
+    meta = json.loads(a.meta) if a.meta else None
+    build(a.input, a.body, out, a.focal, a.debug, a.colorway, a.bg,
+          meta=meta)
 
 
 if __name__ == '__main__':

@@ -2,3 +2,4 @@ output/
 __pycache__/
 .DS_Store
 body_profiles/*/calibrate_debug.png
+cli/native-build/
