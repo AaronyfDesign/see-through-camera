@@ -1,0 +1,27 @@
+{
+  "aliases": [
+    "Canon EOS 5D Mark IV",
+    "Canon EOS 5D Mark IV Body"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      197,
+      633
+    ],
+    [
+      767,
+      633
+    ],
+    [
+      767,
+      1033
+    ],
+    [
+      197,
+      1033
+    ]
+  ],
+  "screen_radius": 8,
+  "crop_factor": 1.0
+}
