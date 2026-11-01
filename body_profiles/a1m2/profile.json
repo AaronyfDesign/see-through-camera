@@ -1,0 +1,28 @@
+{
+  "aliases": [
+    "SONY ILCE-1M2",
+    "ILCE-1M2",
+    "Sony ILCE-1M2"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      95,
+      249
+    ],
+    [
+      416,
+      249
+    ],
+    [
+      416,
+      500
+    ],
+    [
+      95,
+      500
+    ]
+  ],
+  "screen_radius": 8,
+  "crop_factor": 1.0
+}
