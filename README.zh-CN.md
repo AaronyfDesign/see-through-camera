@@ -41,6 +41,11 @@ python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 <!-- BODY-LIST:START -->
 | body | EXIF alias | LCD quad |
 | --- | --- | --- |
+| a1m2 | `SONY ILCE-1M2`, `ILCE-1M2`, `Sony ILCE-1M2` | ✓ |
+| a6400 | `SONY ILCE-6400`, `ILCE-6400`, `Sony ILCE-6400` | ✓ |
+| a6700 | `SONY ILCE-6700`, `ILCE-6700`, `Sony ILCE-6700`, `sony ilce-6700` | ✓ |
+| canon5d4 | `Canon EOS 5D Mark IV`, `Canon EOS 5D Mark IV Body` | ✓ |
+| canonr5ii | `Canon EOS R5 Mark II`, `Canon EOS R5m2` | ✓ |
 | d850 | `NIKON D850` | ✓ |
 | lego | — | ✓ |
 | z30 | `NIKON Z 30`, `NIKON Z30` | ✓ |
@@ -58,6 +63,7 @@ python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 | zf | `NIKON Z f`, `NIKON Zf` | ✓ |
 | zfc | `NIKON Z fc` | ✓ |
 | zr | `NIKON ZR` | ✓ |
+| zve10 | `SONY ZV-E10`, `ZV-E10`, `Sony ZV-E10` | ✓ |
 <!-- BODY-LIST:END -->
 
 新增机身只需在 `body_profiles/` 下放入 `body.png` + `profile.json`
