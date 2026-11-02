@@ -1,0 +1,27 @@
+{
+  "aliases": [
+    "Canon EOS R5 Mark II",
+    "Canon EOS R5m2"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      58,
+      159
+    ],
+    [
+      244,
+      159
+    ],
+    [
+      244,
+      275
+    ],
+    [
+      58,
+      275
+    ]
+  ],
+  "screen_radius": 8,
+  "crop_factor": 1.0
+}

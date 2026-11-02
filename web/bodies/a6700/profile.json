@@ -1,0 +1,29 @@
+{
+  "aliases": [
+    "SONY ILCE-6700",
+    "ILCE-6700",
+    "Sony ILCE-6700",
+    "sony ilce-6700"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      223,
+      310
+    ],
+    [
+      704,
+      310
+    ],
+    [
+      704,
+      633
+    ],
+    [
+      223,
+      633
+    ]
+  ],
+  "screen_radius": 8,
+  "crop_factor": 1.0
+}

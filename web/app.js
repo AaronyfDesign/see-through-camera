@@ -67,6 +67,18 @@ const BODIES = [
     hasColorways: true, brand: 'NIKON' },
   { key: 'zfc',  label: 'Z fc',   profile: 'bodies/zfc/profile.json',   ready: true,
     hasColorways: true, brand: 'NIKON' },
+  { key: 'a6700',  label: 'α6700',          profile: 'bodies/a6700/profile.json',  ready: true,
+    brand: 'SONY' },
+  { key: 'a6400',  label: 'α6400',          profile: 'bodies/a6400/profile.json',  ready: true,
+    brand: 'SONY' },
+  { key: 'a1m2',   label: 'α1 II',          profile: 'bodies/a1m2/profile.json',   ready: true,
+    brand: 'SONY' },
+  { key: 'zve10',  label: 'ZV-E10',         profile: 'bodies/zve10/profile.json',  ready: true,
+    brand: 'SONY' },
+  { key: 'canonr5ii', label: 'EOS R5 Mark II', profile: 'bodies/canonr5ii/profile.json', ready: true,
+    brand: 'CANON' },
+  { key: 'canon5d4',  label: 'EOS 5D Mark IV',  profile: 'bodies/canon5d4/profile.json',  ready: true,
+    brand: 'CANON' },
 ];
 
 const FILTER_OK = (() => {

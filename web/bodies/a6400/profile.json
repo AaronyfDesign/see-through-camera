@@ -1,0 +1,28 @@
+{
+  "aliases": [
+    "SONY ILCE-6400",
+    "ILCE-6400",
+    "Sony ILCE-6400"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      87,
+      199
+    ],
+    [
+      407,
+      199
+    ],
+    [
+      407,
+      396
+    ],
+    [
+      87,
+      396
+    ]
+  ],
+  "screen_radius": 8,
+  "crop_factor": 1.0
+}

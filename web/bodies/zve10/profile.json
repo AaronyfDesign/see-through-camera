@@ -1,0 +1,28 @@
+{
+  "aliases": [
+    "SONY ZV-E10",
+    "ZV-E10",
+    "Sony ZV-E10"
+  ],
+  "png": "body.png",
+  "screen_quad": [
+    [
+      118,
+      140
+    ],
+    [
+      418,
+      140
+    ],
+    [
+      418,
+      370
+    ],
+    [
+      118,
+      370
+    ]
+  ],
+  "screen_radius": 8,
+  "crop_factor": 1.0
+}
