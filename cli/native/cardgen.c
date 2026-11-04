@@ -860,7 +860,7 @@ static void draw_text(Img *dst, const Font *f, const char *text, float px,
 
 /* max --body-scale: body + embedded photo scale together as one unit;
  * fixed tuning constant, adjust after visual testing */
-#define MAX_BODY_SCALE 1.5
+#define MAX_BODY_SCALE 1.28
 typedef struct { unsigned char *buf; size_t len, cap; } JpgAcc;
 
 static void jpg_acc(void *ctx, void *data, int size)

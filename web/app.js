@@ -24,7 +24,7 @@ const CANVAS_LONG = 1350;
 const BODY_WIDTH_FRAC = 0.80;
 // max body scale (body + embedded photo as one unit); keep in sync with
 // MAX_BODY_SCALE in cardgen.c — fixed tuning constant, adjust after testing
-const BODY_SCALE_MAX = 1.5;
+const BODY_SCALE_MAX = 1.28;
 const BODY_TOP_FRAC = 0.065;
 const BG_BLUR_FRAC = 0.007;
 const BG_RADIAL_HSCALE = 2.2;   // radial mode: extra horizontal softening
