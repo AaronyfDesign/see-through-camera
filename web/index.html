@@ -53,6 +53,10 @@
        color:#14181d;font:inherit;font-size:14px;padding:8px 20px;cursor:pointer}
   .btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
   .spacer{flex:1}
+  .zoomrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
+           border-radius:8px;padding:6px 14px;color:var(--dim);font-size:14px}
+  .zoomrow input[type=range]{width:130px;accent-color:var(--accent);cursor:pointer}
+  .zoomrow .zval{color:var(--ink);min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
 
   /* loading overlay: shown while a photo is decoded / card rendered */
   #loading{position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;
@@ -111,6 +115,11 @@
       <button type="button" data-bg="soft">柔和虚化</button>
       <button type="button" data-bg="radial">径向模糊</button>
       <button type="button" data-bg="solid">纯色填充</button>
+    </div>
+    <div class="zoomrow" title="屏幕照片缩放：最左为适配屏幕，向右放大取景；不会超出卡片画面，也不会遮住下方参数">
+      <span>缩放</span>
+      <input id="zoom" type="range" min="1" max="3" step="0.05" value="1" aria-label="屏幕照片缩放">
+      <span class="zval" id="zoomVal">1×</span>
     </div>
     <span class="spacer"></span>
     <button class="btn ghost" id="repick">换一张照片</button>

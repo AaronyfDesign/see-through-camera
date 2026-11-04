@@ -1,0 +1,29 @@
+{
+  "aliases": [
+    "HASSELBLAD X2D II 100C",
+    "HASSELBLAD X2D II",
+    "X2D II 100C",
+    "X2D II"
+  ],
+  "png": "body.png",
+  "screen_radius": 8,
+  "crop_factor": 0.79,
+  "screen_quad": [
+    [
+      126,
+      372
+    ],
+    [
+      652,
+      372
+    ],
+    [
+      652,
+      818
+    ],
+    [
+      126,
+      818
+    ]
+  ]
+}

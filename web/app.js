@@ -79,6 +79,10 @@ const BODIES = [
     brand: 'CANON' },
   { key: 'canon5d4',  label: 'EOS 5D Mark IV',  profile: 'bodies/canon5d4/profile.json',  ready: true,
     brand: 'CANON' },
+  { key: 'x2d',  label: 'X2D 100C',    profile: 'bodies/x2d/profile.json',  ready: true,
+    brand: 'HASSELBLAD' },
+  { key: 'x2d2', label: 'X2D II 100C', profile: 'bodies/x2d2/profile.json', ready: true,
+    brand: 'HASSELBLAD' },
 ];
 
 const FILTER_OK = (() => {
@@ -94,6 +98,7 @@ const els = {
   drop: $('drop'), file: $('file'), previewWrap: $('previewWrap'),
   preview: $('preview'), err: $('err'), controls: $('controls'),
   bodySel: $('bodySel'), cwSeg: $('cwSeg'), bgSeg: $('bgSeg'),
+  zoom: $('zoom'), zoomVal: $('zoomVal'),
   repick: $('repick'), save: $('save'),
   loading: $('loading'),
   uploadSuccess: $('uploadSuccess'), uploadSuccessFile: $('uploadSuccessFile'),
@@ -105,6 +110,7 @@ let state = {
   bodyKey: 'lego',   // user-selected body (default: toy camera)
   colorway: 'silver',// silver | black; only used by bodies with colorways
   bgMode: 'soft',    // soft | radial | solid (background treatment)
+  zoom: 1,           // screen photo zoom; 1 = fit, capped per body in render()
   card: null,        // rendered canvas
 };
 
@@ -305,15 +311,25 @@ async function render() {
   const left = Math.min(...xs) * s + bx, top = Math.min(...ys) * s + by;
   const qw = Math.round((Math.max(...xs) - Math.min(...xs)) * s);
   const qh = Math.round((Math.max(...ys) - Math.min(...ys)) * s);
+  // zoom cap: the zoomed photo rect must stay inside the card and clear of
+  // the caption zone at the bottom (same rule as cardgen --screen-zoom)
+  const zmax = Math.max(1, Math.min(cw / qw, (ch - textZone) / qh));
+  if (!isFinite(state.zoom) || state.zoom < 1) state.zoom = 1;
+  if (state.zoom > zmax) state.zoom = zmax;
+  els.zoom.max = zmax.toFixed(2);
+  els.zoom.value = state.zoom;
+  els.zoomVal.textContent = `${Math.round(state.zoom * 100) / 100}×`;
+  const zw = Math.round(qw * state.zoom), zh = Math.round(qh * state.zoom);
+  const zx = left + qw / 2 - zw / 2, zy = top + qh / 2 - zh / 2;
   ctx.save();
   ctx.beginPath();
   ctx.rect(left, top, qw, qh);
   ctx.clip();
   if (FILTER_OK) {
     ctx.filter = `brightness(${SCREEN_BRIGHTEN})`;
-    drawCover(ctx, img, left, top, qw, qh);
+    drawCover(ctx, img, zx, zy, zw, zh);
   } else {
-    drawCover(ctx, img, left, top, qw, qh);
+    drawCover(ctx, img, zx, zy, zw, zh);
     ctx.fillStyle = `rgba(255,255,255,${SCREEN_BRIGHTEN - 1})`;
     ctx.fillRect(left, top, qw, qh);
   }
@@ -606,6 +622,17 @@ els.bgSeg.addEventListener('click', e => {
   if (!btn || state.bgMode === btn.dataset.bg) return;
   state.bgMode = btn.dataset.bg;
   syncBgSeg();
+  if (state.img) {
+    setLoading(true);
+    renderFromState().catch(showError).finally(() => setLoading(false));
+  }
+});
+
+// ---------- screen photo zoom ----------
+els.zoom.addEventListener('input', () => {
+  const v = parseFloat(els.zoom.value);
+  state.zoom = isFinite(v) ? v : 1;
+  els.zoomVal.textContent = `${Math.round(state.zoom * 100) / 100}×`;
   if (state.img) {
     setLoading(true);
     renderFromState().catch(showError).finally(() => setLoading(false));
