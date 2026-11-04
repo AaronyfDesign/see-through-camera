@@ -3,7 +3,8 @@
     "HASSELBLAD X2D II 100C",
     "HASSELBLAD X2D II",
     "X2D II 100C",
-    "X2D II"
+    "X2D II",
+    "X2D2 100C"
   ],
   "png": "body.png",
   "screen_radius": 8,
@@ -11,19 +12,19 @@
   "screen_quad": [
     [
       126,
-      372
+      371
     ],
     [
       652,
-      372
+      371
     ],
     [
       652,
-      818
+      817
     ],
     [
       126,
-      818
+      817
     ]
   ]
 }

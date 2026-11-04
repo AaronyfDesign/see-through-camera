@@ -48,8 +48,8 @@ python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 | canonr5ii | `Canon EOS R5 Mark II`, `Canon EOS R5m2` | ✓ |
 | d850 | `NIKON D850` | ✓ |
 | lego | — | ✓ |
-| x2d | `HASSELBLAD X2D 100C`, `HASSELBLAD X2D`, `X2D 100C`, `X2D` | ✓ |
-| x2d2 | `HASSELBLAD X2D II 100C`, `HASSELBLAD X2D II`, `X2D II 100C`, `X2D II` | ✓ |
+| x2d | `HASSELBLAD X2D 100C`, `HASSELBLAD X2D`, `X2D 100C`, `X2D`, `X2D2 100C` | ✓ |
+| x2d2 | `HASSELBLAD X2D II 100C`, `HASSELBLAD X2D II`, `X2D II 100C`, `X2D II`, `X2D2 100C` | ✓ |
 | z30 | `NIKON Z 30`, `NIKON Z30` | ✓ |
 | z5 | `NIKON Z 5` | ✓ |
 | z502 | `NIKON Z 50_2`, `NIKON Z50II`, `NIKON Z 50II` | ✓ |
