@@ -1011,8 +1011,9 @@ static void usage(void)
 "usage: cardgen <input.jpg> -o <out.jpg> [--body auto|key] [--bg soft|radial|solid]\n"
 "  [--colorway key] [--focal actual|eq35] [--profiles DIR] [--fonts DIR]\n"
 "  [--model S] [--lens S] [--focal-mm F] [--fnum F] [--expo F] [--iso N]\n"
-"  [--rotate 0|90|180|270] [--screen-zoom F]   (EXIF overrides for EXIF-less previews;\n"
-"  screen-zoom: embedded photo zoom, 1 = fit screen, capped to canvas minus caption zone)\n",
+"  [--rotate 0|90|180|270] [--body-scale F]   (EXIF overrides for EXIF-less previews;\n"
+"  body-scale: body + embedded photo scale together as one unit, 1 = default fit,\n"
+"  capped so the body stays inside the canvas and clear of the caption zone)\n",
     stderr);
 }
 
@@ -1066,7 +1067,7 @@ int main(int argc, char **argv)
     double a_focal = -1, a_fnum = -1, a_expo = -1;
     long a_iso = -1;
     int a_rotate = 0;
-    double a_zoom = 1.0;
+    double a_scale = 1.0;
     const char *profiles_dir = NULL, *fonts_dir = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -1085,7 +1086,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--expo")) a_expo = atof(NEXT());
         else if (!strcmp(a, "--iso")) a_iso = atol(NEXT());
         else if (!strcmp(a, "--rotate")) a_rotate = atoi(NEXT());
-        else if (!strcmp(a, "--screen-zoom")) a_zoom = atof(NEXT());
+        else if (!strcmp(a, "--body-scale")) a_scale = atof(NEXT());
         else if (!strcmp(a, "--profiles")) profiles_dir = NEXT();
         else if (!strcmp(a, "--fonts")) fonts_dir = NEXT();
         else if (!strcmp(a, "-h") || !strcmp(a, "--help")) { usage(); return 0; }
@@ -1319,6 +1320,22 @@ int main(int argc, char **argv)
     }
     int bw = (int)(orig_w * s_body + 0.5);
     int bh = (int)(body.h * s_body + 0.5);
+    /* body scale: body + embedded photo scale together as one unit around
+     * the same anchor; capped so the body stays inside the canvas and clear
+     * of the caption text zone */
+    {
+        double mw = (double)canvas_w / bw;
+        double mh = (double)(canvas_h - top_margin - text_zone) / bh;
+        double smax = mw < mh ? mw : mh;
+        if (smax < 1) smax = 1;
+        double sc = a_scale;
+        if (sc < 1) sc = 1;
+        if (sc > smax) sc = smax;
+        if (sc > 1) {
+            bw = (int)(bw * sc + 0.5);
+            bh = (int)(bh * sc + 0.5);
+        }
+    }
     Img body_r = img_resize(&body, bw, bh, 4);
     stbi_image_free(body.d);
     body = body_r;
@@ -1377,23 +1394,9 @@ int main(int argc, char **argv)
         int qw = (int)(right - left + 0.5), qh = (int)(bottom - top + 0.5);
         if (qw < 1) qw = 1;
         if (qh < 1) qh = 1;
-        /* screen zoom: 1 = fit; capped so the zoomed photo rect stays inside
-         * the canvas and clear of the caption text zone at the bottom */
-        double zoom = a_zoom;
-        {
-            double zx = (double)canvas_w / qw;
-            double zy = (double)(canvas_h - text_zone) / qh;
-            double zmax = zx < zy ? zx : zy;
-            if (zmax < 1) zmax = 1;
-            if (zoom < 1) zoom = 1;
-            if (zoom > zmax) zoom = zmax;
-        }
-        int zw = (int)(qw * zoom + 0.5), zh = (int)(qh * zoom + 0.5);
-        Img screen = img_cover(&photo, zw, zh);
+        Img screen = img_cover(&photo, qw, qh);
         img_brightness(&screen, SCREEN_BRIGHTEN);
-        double cx = left + qw / 2.0, cy = top + qh / 2.0;
-        int px = (int)(cx - zw / 2.0 + 0.5), py = (int)(cy - zh / 2.0 + 0.5);
-        paste_rgb_masked(&canvas, &screen, px, py,
+        paste_rgb_masked(&canvas, &screen, (int)(left + 0.5), (int)(top + 0.5),
                          (int)(left + 0.5), (int)(top + 0.5),
                          (int)(left + 0.5) + qw, (int)(top + 0.5) + qh);
         stbi_image_free(screen.d);

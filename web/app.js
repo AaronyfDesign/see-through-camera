@@ -98,7 +98,7 @@ const els = {
   drop: $('drop'), file: $('file'), previewWrap: $('previewWrap'),
   preview: $('preview'), err: $('err'), controls: $('controls'),
   bodySel: $('bodySel'), cwSeg: $('cwSeg'), bgSeg: $('bgSeg'),
-  zoom: $('zoom'), zoomVal: $('zoomVal'),
+  zoom: $('zoom'), zoomVal: $('zoomVal'), zoomRow: document.querySelector('.zoomrow'),
   repick: $('repick'), save: $('save'),
   loading: $('loading'),
   uploadSuccess: $('uploadSuccess'), uploadSuccessFile: $('uploadSuccessFile'),
@@ -293,8 +293,23 @@ async function render() {
   const textZone = 56 + GAP_LINE + LINE2_SIZE + 30;
   const sBody = Math.min(cw * BODY_WIDTH_FRAC / drawn.width,
                          (ch - topMargin - textZone) / drawn.height);
-  const bw = Math.round(drawn.width * sBody);
-  const bh = Math.round(drawn.height * sBody);
+  let bw = Math.round(drawn.width * sBody);
+  let bh = Math.round(drawn.height * sBody);
+  // body scale: body + embedded photo scale together as one unit around
+  // the same anchor; capped so the body stays inside the canvas and clear
+  // of the caption zone (same rule as cardgen --body-scale)
+  const zmax = Math.max(1, Math.min(cw / bw, (ch - topMargin - textZone) / bh));
+  // no headroom (e.g. height-bound fits) -> the slider is a no-op, hide it
+  els.zoomRow.style.display = zmax > 1.001 ? '' : 'none';
+  if (!isFinite(state.zoom) || state.zoom < 1) state.zoom = 1;
+  if (state.zoom > zmax) state.zoom = zmax;
+  els.zoom.max = zmax.toFixed(2);
+  els.zoom.value = state.zoom;
+  els.zoomVal.textContent = `${Math.round(state.zoom * 100) / 100}×`;
+  if (state.zoom > 1) {
+    bw = Math.round(bw * state.zoom);
+    bh = Math.round(bh * state.zoom);
+  }
   const bx = Math.round((cw - bw) / 2);
   // always centered: horizontally on the canvas, vertically between the
   // top margin and the caption zone
@@ -311,25 +326,15 @@ async function render() {
   const left = Math.min(...xs) * s + bx, top = Math.min(...ys) * s + by;
   const qw = Math.round((Math.max(...xs) - Math.min(...xs)) * s);
   const qh = Math.round((Math.max(...ys) - Math.min(...ys)) * s);
-  // zoom cap: the zoomed photo rect must stay inside the card and clear of
-  // the caption zone at the bottom (same rule as cardgen --screen-zoom)
-  const zmax = Math.max(1, Math.min(cw / qw, (ch - textZone) / qh));
-  if (!isFinite(state.zoom) || state.zoom < 1) state.zoom = 1;
-  if (state.zoom > zmax) state.zoom = zmax;
-  els.zoom.max = zmax.toFixed(2);
-  els.zoom.value = state.zoom;
-  els.zoomVal.textContent = `${Math.round(state.zoom * 100) / 100}×`;
-  const zw = Math.round(qw * state.zoom), zh = Math.round(qh * state.zoom);
-  const zx = left + qw / 2 - zw / 2, zy = top + qh / 2 - zh / 2;
   ctx.save();
   ctx.beginPath();
   ctx.rect(left, top, qw, qh);
   ctx.clip();
   if (FILTER_OK) {
     ctx.filter = `brightness(${SCREEN_BRIGHTEN})`;
-    drawCover(ctx, img, zx, zy, zw, zh);
+    drawCover(ctx, img, left, top, qw, qh);
   } else {
-    drawCover(ctx, img, zx, zy, zw, zh);
+    drawCover(ctx, img, left, top, qw, qh);
     ctx.fillStyle = `rgba(255,255,255,${SCREEN_BRIGHTEN - 1})`;
     ctx.fillRect(left, top, qw, qh);
   }
