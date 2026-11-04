@@ -857,6 +857,10 @@ static void draw_text(Img *dst, const Font *f, const char *text, float px,
 
 /* encode JPEG into memory with a growing buffer (stb needs size upfront) */
 #define JPEG_START_CAP (4u << 20)
+
+/* max --body-scale: body + embedded photo scale together as one unit;
+ * fixed tuning constant, adjust after visual testing */
+#define MAX_BODY_SCALE 1.5
 typedef struct { unsigned char *buf; size_t len, cap; } JpgAcc;
 
 static void jpg_acc(void *ctx, void *data, int size)
@@ -1321,16 +1325,11 @@ int main(int argc, char **argv)
     int bw = (int)(orig_w * s_body + 0.5);
     int bh = (int)(body.h * s_body + 0.5);
     /* body scale: body + embedded photo scale together as one unit around
-     * the same anchor; capped so the body stays inside the canvas and clear
-     * of the caption text zone */
+     * the same anchor; max is the fixed MAX_BODY_SCALE constant */
     {
-        double mw = (double)canvas_w / bw;
-        double mh = (double)(canvas_h - top_margin - text_zone) / bh;
-        double smax = mw < mh ? mw : mh;
-        if (smax < 1) smax = 1;
         double sc = a_scale;
         if (sc < 1) sc = 1;
-        if (sc > smax) sc = smax;
+        if (sc > MAX_BODY_SCALE) sc = MAX_BODY_SCALE;
         if (sc > 1) {
             bw = (int)(bw * sc + 0.5);
             bh = (int)(bh * sc + 0.5);

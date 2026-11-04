@@ -22,6 +22,9 @@
 // ---------- constants (mirror cli/watermark.py) ----------
 const CANVAS_LONG = 1350;
 const BODY_WIDTH_FRAC = 0.80;
+// max body scale (body + embedded photo as one unit); keep in sync with
+// MAX_BODY_SCALE in cardgen.c — fixed tuning constant, adjust after testing
+const BODY_SCALE_MAX = 1.5;
 const BODY_TOP_FRAC = 0.065;
 const BG_BLUR_FRAC = 0.007;
 const BG_RADIAL_HSCALE = 2.2;   // radial mode: extra horizontal softening
@@ -296,11 +299,9 @@ async function render() {
   let bw = Math.round(drawn.width * sBody);
   let bh = Math.round(drawn.height * sBody);
   // body scale: body + embedded photo scale together as one unit around
-  // the same anchor; capped so the body stays inside the canvas and clear
-  // of the caption zone (same rule as cardgen --body-scale)
-  const zmax = Math.max(1, Math.min(cw / bw, (ch - topMargin - textZone) / bh));
-  // no headroom (e.g. height-bound fits) -> the slider is a no-op, hide it
-  els.zoomRow.style.display = zmax > 1.001 ? '' : 'none';
+  // the same anchor; max is a fixed tuning constant (keep in sync with
+  // MAX_BODY_SCALE in cardgen.c), adjust after visual testing
+  const zmax = BODY_SCALE_MAX;
   if (!isFinite(state.zoom) || state.zoom < 1) state.zoom = 1;
   if (state.zoom > zmax) state.zoom = zmax;
   els.zoom.max = zmax.toFixed(2);
