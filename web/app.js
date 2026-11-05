@@ -22,9 +22,10 @@
 // ---------- constants (mirror cli/watermark.py) ----------
 const CANVAS_LONG = 1350;
 const BODY_WIDTH_FRAC = 0.80;
-// max body scale (body + embedded photo as one unit); keep in sync with
-// MAX_BODY_SCALE in cardgen.c — fixed tuning constant, adjust after testing
-const BODY_SCALE_MAX = 1.28;
+// default max body scale (body + embedded photo as one unit); a profile
+// may override it with "max_body_scale" (e.g. z9 = 1.28) — keep the default
+// in sync with MAX_BODY_SCALE in cardgen.c
+const BODY_SCALE_MAX = 1.5;
 const BODY_TOP_FRAC = 0.065;
 const BG_BLUR_FRAC = 0.007;
 const BG_RADIAL_HSCALE = 2.2;   // radial mode: extra horizontal softening
@@ -299,9 +300,20 @@ async function render() {
   let bw = Math.round(drawn.width * sBody);
   let bh = Math.round(drawn.height * sBody);
   // body scale: body + embedded photo scale together as one unit around
-  // the same anchor; max is a fixed tuning constant (keep in sync with
-  // MAX_BODY_SCALE in cardgen.c), adjust after visual testing
-  const zmax = BODY_SCALE_MAX;
+  // the same anchor. Effective cap = min(profile "max_body_scale" (default
+  // BODY_SCALE_MAX), geometric silhouette cap): the visible silhouette must
+  // stay inside the canvas and clear of the caption zone (keep in sync with
+  // cardgen.c)
+  const pmax = typeof body.prof.max_body_scale === 'number' &&
+               body.prof.max_body_scale > 1 ? body.prof.max_body_scale : BODY_SCALE_MAX;
+  // silhouette bbox (alpha > 10) in DRAWN (post-rotation) coords — the
+  // bb-canvas bbox above is pre-rotation, so x/y extents swap for portrait
+  const sil0W = (bx1 - bx0 + 1) * sBody, sil0H = (by1 - by0 + 1) * sBody;
+  const silW = portrait ? sil0H : sil0W;
+  const silH = portrait ? sil0W : sil0H;
+  let gcap = Math.min(cw / silW, (ch - topMargin - textZone) / silH);
+  if (!isFinite(gcap) || gcap < 1) gcap = 1;
+  const zmax = Math.min(pmax, gcap);
   if (!isFinite(state.zoom) || state.zoom < 1) state.zoom = 1;
   if (state.zoom > zmax) state.zoom = zmax;
   els.zoom.max = zmax.toFixed(2);

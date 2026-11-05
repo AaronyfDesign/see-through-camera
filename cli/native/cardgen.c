@@ -859,8 +859,8 @@ static void draw_text(Img *dst, const Font *f, const char *text, float px,
 #define JPEG_START_CAP (4u << 20)
 
 /* max --body-scale: body + embedded photo scale together as one unit;
- * fixed tuning constant, adjust after visual testing */
-#define MAX_BODY_SCALE 1.28
+ * default cap when a profile does not override it ("max_body_scale") */
+#define MAX_BODY_SCALE 1.5
 typedef struct { unsigned char *buf; size_t len, cap; } JpgAcc;
 
 static void jpg_acc(void *ctx, void *data, int size)
@@ -892,6 +892,7 @@ typedef struct {
     char png_path[512];
     double quad[4][2];
     double crop_factor;
+    double max_scale;
     int gray;
 } Profile;
 
@@ -937,6 +938,8 @@ static int load_profiles(const char *dir, Profile **out, int *out_n)
         }
         JVal *cf = jget(root, "crop_factor");
         p->crop_factor = cf ? cf->num : 1.0;
+        JVal *ms = jget(root, "max_body_scale");
+        p->max_scale = (ms && ms->type == J_NUM) ? ms->num : MAX_BODY_SCALE;
         JVal *gray = jget(root, "gray");
         p->gray = gray && gray->type == J_BOOL && gray->boolean;
         /* colorways: keep only if requested later; re-parse on demand */
@@ -1325,11 +1328,35 @@ int main(int argc, char **argv)
     int bw = (int)(orig_w * s_body + 0.5);
     int bh = (int)(body.h * s_body + 0.5);
     /* body scale: body + embedded photo scale together as one unit around
-     * the same anchor; max is the fixed MAX_BODY_SCALE constant */
+     * the same anchor. Effective cap = min(profile max_body_scale, geometric
+     * silhouette cap): the visible body silhouette must stay inside the
+     * canvas AND clear of the caption text zone. */
     {
         double sc = a_scale;
         if (sc < 1) sc = 1;
-        if (sc > MAX_BODY_SCALE) sc = MAX_BODY_SCALE;
+        double pmax = prof.max_scale > 1 ? prof.max_scale : 1;
+        /* silhouette bbox (alpha > 10) of the upright body, before resize */
+        int sbl = bw0, sbt = bh0, sbr = -1, sbb = -1;
+        for (int y = 0; y < body.h; y++)
+            for (int x = 0; x < body.w; x++)
+                if (body.d[((size_t)y * body.w + x) * 4 + 3] > 10) {
+                    if (x < sbl) sbl = x;
+                    if (x > sbr) sbr = x;
+                    if (y < sbt) sbt = y;
+                    if (y > sbb) sbb = y;
+                }
+        if (sbr < 0) { sbl = 0; sbt = 0; sbr = bw0 - 1; sbb = bh0 - 1; }
+        double sil_w = (double)(sbr - sbl + 1);
+        double sil_h = (double)(sbb - sbt + 1);
+        double gcap = MAX_BODY_SCALE;
+        {
+            double gw = sil_w > 0 ? (double)canvas_w / (sil_w * s_body) : MAX_BODY_SCALE;
+            double gh = sil_h > 0 ? (double)(canvas_h - top_margin - text_zone) / (sil_h * s_body) : MAX_BODY_SCALE;
+            gcap = gw < gh ? gw : gh;
+            if (gcap < 1) gcap = 1;
+        }
+        double smax = pmax < gcap ? pmax : gcap;
+        if (sc > smax) sc = smax;
         if (sc > 1) {
             bw = (int)(bw * sc + 0.5);
             bh = (int)(bh * sc + 0.5);

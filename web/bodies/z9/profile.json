@@ -22,5 +22,6 @@
     ]
   ],
   "screen_radius": 0,
-  "crop_factor": 1.0
+  "crop_factor": 1.0,
+  "max_body_scale": 1.28
 }
