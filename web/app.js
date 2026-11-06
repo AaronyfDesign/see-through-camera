@@ -87,6 +87,8 @@ const BODIES = [
     brand: 'HASSELBLAD' },
   { key: 'x2d2', label: 'X2D II 100C', profile: 'bodies/x2d2/profile.json', ready: true,
     brand: 'HASSELBLAD' },
+  { key: 'gr4',  label: 'GR IV', profile: 'bodies/gr4/profile.json', ready: true,
+    brand: 'RICOH' },
 ];
 
 const FILTER_OK = (() => {

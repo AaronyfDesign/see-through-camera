@@ -1,0 +1,27 @@
+{
+  "aliases": [
+    "GR IV",
+    "RICOH GR IV"
+  ],
+  "png": "body.png",
+  "screen_radius": 8,
+  "crop_factor": 1.5,
+  "screen_quad": [
+    [
+      50,
+      114
+    ],
+    [
+      306,
+      114
+    ],
+    [
+      306,
+      286
+    ],
+    [
+      50,
+      286
+    ]
+  ]
+}
