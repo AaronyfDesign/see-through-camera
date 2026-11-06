@@ -47,6 +47,7 @@ python3 cli/watermark.py path/to/DSC_xxxx.JPG [--body z63]
 | canon5d4 | `Canon EOS 5D Mark IV`, `Canon EOS 5D Mark IV Body` | ✓ |
 | canonr5ii | `Canon EOS R5 Mark II`, `Canon EOS R5m2` | ✓ |
 | d850 | `NIKON D850` | ✓ |
+| gr4 | `GR IV`, `RICOH GR IV` | ✓ |
 | lego | — | ✓ |
 | x2d | `HASSELBLAD X2D 100C`, `HASSELBLAD X2D`, `X2D 100C`, `X2D`, `X2D2 100C` | ✓ |
 | x2d2 | `HASSELBLAD X2D II 100C`, `HASSELBLAD X2D II`, `X2D II 100C`, `X2D II`, `X2D2 100C` | ✓ |
