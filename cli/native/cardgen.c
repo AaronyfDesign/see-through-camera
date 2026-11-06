@@ -1261,7 +1261,8 @@ int main(int argc, char **argv)
         }
     }
 
-    /* punch the screen window out of the body alpha (EXACTLY the quad) */
+    /* screen window bounds (EXACT profile quad); the punch itself happens
+     * after the resize so the hole stays pixel-sharp at final resolution */
     double ql = 1e9, qt = 1e9, qr = -1e9, qb = -1e9;
     for (int i = 0; i < 4; i++) {
         if (prof.quad[i][0] < ql) ql = prof.quad[i][0];
@@ -1269,11 +1270,6 @@ int main(int argc, char **argv)
         if (prof.quad[i][1] < qt) qt = prof.quad[i][1];
         if (prof.quad[i][1] > qb) qb = prof.quad[i][1];
     }
-    int iql = (int)ql, iqt = (int)qt, iqr = (int)qr - 1, iqb = (int)qb - 1;
-    for (int y = iqt; y <= iqb; y++)
-        for (int x = iql; x <= iqr; x++)
-            if (x >= 0 && x < body.w && y >= 0 && y < body.h)
-                body.d[((size_t)y * body.w + x) * 4 + 3] = 0;
 
     /* alpha bbox (silhouette) for the bleed clamp */
     int bl = body.w, bt = body.h, br = -1, bb = -1;
@@ -1365,6 +1361,25 @@ int main(int argc, char **argv)
     Img body_r = img_resize(&body, bw, bh, 4);
     stbi_image_free(body.d);
     body = body_r;
+    /* punch the screen window (EXACT profile quad) at FINAL resolution,
+     * after the resize: a pre-resize punch would get its corners softened
+     * by the resample, leaving semi-opaque body over the photo corners */
+    {
+        double s = (double)bw / orig_w;
+        double wl = 1e9, wt2 = 1e9, wr = -1e9, wb2 = -1e9;
+        for (int i = 0; i < 4; i++) {
+            if (window_quad[i][0] < wl) wl = window_quad[i][0];
+            if (window_quad[i][0] > wr) wr = window_quad[i][0];
+            if (window_quad[i][1] < wt2) wt2 = window_quad[i][1];
+            if (window_quad[i][1] > wb2) wb2 = window_quad[i][1];
+        }
+        int px0 = (int)(wl * s + 0.5), py0 = (int)(wt2 * s + 0.5);
+        int px1 = (int)(wr * s + 0.5), py1 = (int)(wb2 * s + 0.5);
+        for (int y = py0; y < py1; y++)
+            for (int x = px0; x < px1; x++)
+                if (x >= 0 && x < body.w && y >= 0 && y < body.h)
+                    body.d[((size_t)y * body.w + x) * 4 + 3] = 0;
+    }
     int bx = (canvas_w - bw) / 2;
     int by = top_margin + (canvas_h - top_margin - text_zone - bh) / 2;
 

@@ -282,6 +282,8 @@ async function render() {
   const er = Math.min(exp, bx1 - qr), eb = Math.min(exp, by1 - qb);
   let pquad = [[ql - el, qt - et], [qr + er, qt - et],
                [qr + er, qb + eb], [ql - el, qb + eb]];
+  // window quad (EXACT profile quad, no bleed) — punched at final resolution
+  let wquad = [[ql, qt], [qr, qt], [qr, qb], [ql, qb]];
 
   const drawn = document.createElement('canvas');
   const dctx = drawn.getContext('2d');
@@ -291,6 +293,7 @@ async function render() {
     dctx.rotate(-Math.PI / 2);
     dctx.drawImage(bb, 0, 0);
     pquad = pquad.map(([x, y]) => [y, bw0 - x]);
+    wquad = wquad.map(([x, y]) => [y, bw0 - x]);
   } else {
     drawn.width = bw0; drawn.height = bh0;
     dctx.drawImage(bb, 0, 0);
@@ -354,8 +357,23 @@ async function render() {
     ctx.fillRect(left, top, qw, qh);
   }
   ctx.restore();
-  // top layer: body with the punched window
-  ctx.drawImage(drawn, bx, by, bw, bh);
+  // top layer: body with the punched window — scale to final size FIRST,
+  // then punch at final resolution; scaling after the punch would soften
+  // the hole corners and leave semi-opaque body over the photo corners
+  {
+    const fcan = document.createElement('canvas');
+    fcan.width = bw; fcan.height = bh;
+    const fctx = fcan.getContext('2d');
+    fctx.drawImage(drawn, 0, 0, bw, bh);
+    const s2 = bw / drawn.width;
+    const wxs = wquad.map(p => p[0]), wys = wquad.map(p => p[1]);
+    const wx0 = Math.round(Math.min(...wxs) * s2), wx1 = Math.round(Math.max(...wxs) * s2);
+    const wy0 = Math.round(Math.min(...wys) * s2), wy1 = Math.round(Math.max(...wys) * s2);
+    fctx.globalCompositeOperation = 'destination-out';
+    fctx.fillRect(wx0, wy0, wx1 - wx0, wy1 - wy0);
+    fctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(fcan, bx, by);
+  }
 
   // 4. caption lines, pinned to the card bottom, auto-shrink on overflow;
   const parts1 = [];
