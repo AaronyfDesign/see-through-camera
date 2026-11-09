@@ -78,7 +78,7 @@ const BODIES = [
   { key: 'a1m2',   label: 'α1 II',          profile: 'bodies/a1m2/profile.json',   ready: true,
     brand: 'SONY' },
   { key: 'a7c2',   label: 'α7C II',         profile: 'bodies/a7c2/profile.json',   ready: true,
-    brand: 'SONY' },
+    brand: 'SONY', hasColorways: true },
   { key: 'zve10',  label: 'ZV-E10',         profile: 'bodies/zve10/profile.json',  ready: true,
     brand: 'SONY' },
   { key: 'canonr5ii', label: 'EOS R5 Mark II', profile: 'bodies/canonr5ii/profile.json', ready: true,
