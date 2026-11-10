@@ -444,65 +444,80 @@ function drawBackground(ctx, img, cw, ch, cx, cy) {
     ctx.fillStyle = `rgb(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)})`;
     ctx.fillRect(0, 0, cw, ch);
   } else if (state.bgMode === 'radial') {
-    // stronger blur horizontally: gaussian applied in a horizontally
-    // squeezed space, so sigma_x = BG_RADIAL_HSCALE * sigma_y
+    // true radial zoom-stretch (same as cardgen --bg radial): resample the
+    // background away from the body center — near the center content stays
+    // sharp, further out each pixel samples closer to the center, so detail
+    // stretches into horizontal streaks (the "pulled apart" look), plus a
+    // gentle distance-weighted soften so rim streaks read as smooth silk
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    drawCoverOverscan(ctx, img, cw, ch, 0);
-    const sw = Math.max(1, Math.round(cw / BG_RADIAL_HSCALE));
-    let blurred, srcX, srcW;
-    if (FILTER_OK) {
-      // anisotropic overscan cover: x squeezed by HSCALE, y untouched;
-      // the gaussian then runs in squeezed space, so the effective
-      // horizontal sigma is HSCALE times the vertical one
-      const M = Math.ceil(cw * BG_BLUR_FRAC * 5);
-      const sqw = sw + 2 * Math.ceil(M / BG_RADIAL_HSCALE);
-      const sq = document.createElement('canvas');
-      sq.width = sqw; sq.height = ch;
-      const sqx = sq.getContext('2d');
-      sqx.imageSmoothingEnabled = true;
-      sqx.imageSmoothingQuality = 'high';
-      const s = Math.max((cw + 2 * M) / img.width, (ch + 2 * M) / img.height);
-      const dw = img.width * s, dh = img.height * s;
-      const dx = (-M + (cw + 2 * M - dw) / 2) / BG_RADIAL_HSCALE;
-      const dy = -M + (ch + 2 * M - dh) / 2;
-      sqx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
-      sqx.drawImage(img, dx, dy, dw / BG_RADIAL_HSCALE, dh);
-      sqx.filter = 'none';
-      blurred = sq; srcX = (sqw - sw) / 2; srcW = sw;
-    } else {
-      // legacy (no ctx.filter): isotropic fallback blur, then squeeze and
-      // stretch for a milder horizontal boost
-      const full = document.createElement('canvas');
-      full.width = cw; full.height = ch;
-      drawCoverBlurFallback(full.getContext('2d'), img, cw, ch);
-      const sq = document.createElement('canvas');
-      sq.width = sw; sq.height = ch;
-      const sqx = sq.getContext('2d');
-      sqx.imageSmoothingQuality = 'high';
-      sqx.drawImage(full, 0, 0, sw, ch);
-      blurred = sq; srcX = 0; srcW = sw;
+    const base = document.createElement('canvas');
+    base.width = cw; base.height = ch;
+    drawCoverOverscan(base.getContext('2d'), img, cw, ch, 0);
+    const K = 1 / 600;
+    const src = base.getContext('2d').getImageData(0, 0, cw, ch);
+    const out = new ImageData(cw, ch);
+    const sd = src.data, od = out.data;
+    for (let y = 0; y < ch; y++) {
+      const dy = y - cy;
+      for (let x = 0; x < cw; x++) {
+        const dx = x - cx;
+        const d = Math.hypot(dx, dy);
+        const f = 1 / (1 + K * d);
+        let sx = cx + dx * f, sy = cy + dy * f;
+        if (sx < 0) sx = 0; if (sx > cw - 1) sx = cw - 1;
+        if (sy < 0) sy = 0; if (sy > ch - 1) sy = ch - 1;
+        const x0 = sx | 0, y0 = sy | 0;
+        const x1 = x0 + 1 < cw ? x0 + 1 : x0;
+        const y1 = y0 + 1 < ch ? y0 + 1 : y0;
+        const fx = sx - x0, fy = sy - y0;
+        const i00 = (y0 * cw + x0) * 4, i10 = (y0 * cw + x1) * 4;
+        const i01 = (y1 * cw + x0) * 4, i11 = (y1 * cw + x1) * 4;
+        const o = (y * cw + x) * 4;
+        for (let ch4 = 0; ch4 < 3; ch4++) {
+          od[o + ch4] = sd[i00 + ch4] * (1 - fx) * (1 - fy)
+                      + sd[i10 + ch4] * fx * (1 - fy)
+                      + sd[i01 + ch4] * (1 - fx) * fy
+                      + sd[i11 + ch4] * fx * fy;
+        }
+        od[o + 3] = 255;
+      }
     }
-    const off = document.createElement('canvas');
-    off.width = cw; off.height = ch;
-    const octx = off.getContext('2d');
-    octx.imageSmoothingEnabled = true;
-    octx.imageSmoothingQuality = 'high';
-    octx.drawImage(blurred, srcX, 0, srcW, ch, 0, 0, cw, ch);
-    // erase the blur layer toward the center so the sharp base shows
-    // through: fully erased inside, feathering out to full blur at 85% of
-    // the max radius (rim is always fully blurred — no ghost detail)
-    const rMax = Math.hypot(Math.max(cx, cw - cx), Math.max(cy, ch - cy));
-    const grad = octx.createRadialGradient(cx, cy, 0, cx, cy, rMax);
-    grad.addColorStop(0, 'rgba(0,0,0,1)');
-    grad.addColorStop(0.42, 'rgba(0,0,0,1)');
-    grad.addColorStop(0.85, 'rgba(0,0,0,0)');
-    octx.globalCompositeOperation = 'destination-out';
-    octx.fillStyle = grad;
-    octx.fillRect(0, 0, cw, ch);
-    octx.globalCompositeOperation = 'source-over';
+    // distance-weighted soften: blur copy blended in by radius
+    const soft = document.createElement('canvas');
+    soft.width = cw; soft.height = ch;
+    const sctx = soft.getContext('2d');
+    sctx.imageSmoothingQuality = 'high';
+    sctx.putImageData(out, 0, 0);
+    const blurC = document.createElement('canvas');
+    blurC.width = cw; blurC.height = ch;
+    const bctx = blurC.getContext('2d');
+    if (FILTER_OK) {
+      bctx.filter = `blur(${cw * 0.004}px)`;
+      bctx.drawImage(soft, 0, 0);
+      bctx.filter = 'none';
+    } else {
+      bctx.drawImage(soft, 0, 0);
+    }
+    const bl = document.createElement(`canvas`).getContext(`2d`);
+    const rad = bl.createRadialGradient(cx, cy, 0, cx, cy, Math.max(cw, ch));
+    rad.addColorStop(0, 'rgba(0,0,0,0)');
+    rad.addColorStop(0.25, 'rgba(0,0,0,0)');
+    rad.addColorStop(0.7, 'rgba(0,0,0,1)');
+    // stretched base first...
+    bl.drawImage(soft, 0, 0);
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(off, 0, 0);
+    ctx.drawImage(soft, 0, 0);
+    // ...then the blurred rim, masked by the same radial weights (single pass)
+    const mix = document.createElement('canvas');
+    mix.width = cw; mix.height = ch;
+    const mctx = mix.getContext('2d');
+    mctx.drawImage(blurC, 0, 0);
+    mctx.globalCompositeOperation = 'destination-in';
+    mctx.fillStyle = rad;
+    mctx.fillRect(0, 0, cw, ch);
+    mctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(mix, 0, 0);
   } else { // soft (default)
     if (FILTER_OK) {
       ctx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
