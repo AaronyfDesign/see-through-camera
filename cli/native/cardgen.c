@@ -993,14 +993,14 @@ static int resolve_profile(const char *dir, const char *body, const char *model,
 #define BODY_TOP_FRAC 0.065
 #define BG_BLUR_FRAC 0.007
 #define BG_RADIAL_HSCALE 2.2
-/* radial bg: photo melts/stretches DOWNWARD from the body's top edge —
- * rows below the body top are resampled from progressively closer to the
- * melt line and vertically smeared, so detail pulls into long horizontal
- * streaks that fade into a smooth gradient (the "pulled/torn" look of the
- * reference image; NOT a radial mask blur, and no center sharp-spot) */
+/* radial bg: photo melts DOWNWARD from the body's BOTTOM edge —
+ * rows below the body bottom resample closer to the melt line and smear,
+ * with brightness fading toward the caption zone; everything above the
+ * body stays as the original photo (reference-image look) */
 #define MELT_MAX_V 14.0
 #define MELT_SMEAR_FRAC 0.018
 #define MELT_HSMEAR_FRAC 0.045
+#define MELT_FADE_TO 0.45
 #define BG_DARKEN 0.72
 #define SCREEN_BRIGHTEN 1.06
 #define LINE1_SIZE 34
@@ -1399,11 +1399,10 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < (size_t)canvas_w * canvas_h; i++)
             memcpy(bg.d + i * 3, avg, 3);
     } else if (!strcmp(bg_mode, "radial")) {
-        /* vertical MELT: the photo stays sharp above the body's top edge;
-         * below it, rows are resampled from progressively closer to the melt
-         * line and vertically smeared, so detail pulls into long horizontal
-         * streaks fading into a smooth gradient (reference-image look) */
-        int yb = by;                            /* melt line: body top */
+        /* vertical MELT: the photo stays sharp above the body BOTTOM edge;
+         * below it, rows resample closer to the melt line, smear dual-axis
+         * and fade darker with depth (reference-image look) */
+        int yb = by + bh;                       /* melt line: body BOTTOM */
         int smear = (int)(canvas_h * MELT_SMEAR_FRAC + 0.5);
         if (smear < 2) smear = 2;
         int hsmear = (int)(canvas_w * MELT_HSMEAR_FRAC + 0.5);
@@ -1442,6 +1441,7 @@ int main(int argc, char **argv)
                 rowacc[x * 3 + 2] = acc[2] / n;
             }
             /* horizontal smear pass over the vertically-averaged row */
+            double fade = 1.0 - (1.0 - MELT_FADE_TO) * depth; /* darken with depth */
             for (int x = 0; x < canvas_w; x++) {
                 double acc[3] = {0, 0, 0};
                 int n = 0;
@@ -1455,9 +1455,9 @@ int main(int argc, char **argv)
                     n++;
                 }
                 unsigned char *o = out.d + ((size_t)y * canvas_w + x) * 3;
-                o[0] = (unsigned char)(acc[0] / n + 0.5);
-                o[1] = (unsigned char)(acc[1] / n + 0.5);
-                o[2] = (unsigned char)(acc[2] / n + 0.5);
+                o[0] = (unsigned char)(acc[0] / n * fade + 0.5);
+                o[1] = (unsigned char)(acc[1] / n * fade + 0.5);
+                o[2] = (unsigned char)(acc[2] / n * fade + 0.5);
             }
         }
         free(rowacc);

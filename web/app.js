@@ -424,10 +424,9 @@ function drawCoverOverscan(ctx, img, w, h, margin) {
 
 // background modes (state.bgMode):
 //   soft   — uniform gaussian blur + darken (original look, default)
-//   radial — vertical MELT: photo stays sharp above the body's top edge;
-//            below it rows are resampled closer to the melt line and smeared
-//            vertically+horizontally, pulling detail into long horizontal
-//            streaks that fade into a smooth gradient (reference look)
+//   radial — vertical MELT: photo stays sharp above the body's bottom edge;
+//            below it rows resample closer to the melt line, smear dual-axis
+//            and fade darker with depth (reference look)
 //   solid  — flat fill with the photo's average color (1x1 downsample)
 function drawBackground(ctx, img, cw, ch, cx, cy, bodyTop, bodyH) {
   if (state.bgMode === 'solid') {
@@ -451,10 +450,10 @@ function drawBackground(ctx, img, cw, ch, cx, cy, bodyTop, bodyH) {
     // sharp, further out each pixel samples closer to the center, so detail
     // stretches into horizontal streaks (the "pulled apart" look), plus a
     // vertical MELT (same as cardgen --bg radial): photo stays sharp above
-    // the body top; below it rows resample closer to the melt line and get
-    // smeared vertically+horizontally, pulling detail into long streaks
-    const MAX_V = 14, VFRAC = 0.018, HFRAC = 0.045;
-    const yb = bodyTop;
+    // the body BOTTOM; below it rows resample closer to the melt line, smear
+    // dual-axis and fade darker with depth (reference-image look)
+    const MAX_V = 14, VFRAC = 0.018, HFRAC = 0.045, FADE_TO = 0.45;
+    const yb = bodyTop + bodyH;
     const smear = Math.max(2, Math.round(ch * VFRAC));
     const hsmear = Math.max(2, Math.round(cw * HFRAC));
     const base = document.createElement('canvas');
@@ -488,7 +487,8 @@ function drawBackground(ctx, img, cw, ch, cx, cy, bodyTop, bodyH) {
         }
         rowacc[x * 3] = a0 / n; rowacc[x * 3 + 1] = a1 / n; rowacc[x * 3 + 2] = a2 / n;
       }
-      // horizontal smear pass
+      // horizontal smear pass + depth fade (darken toward caption zone)
+      const fade = 1 - (1 - FADE_TO) * depth;
       for (let x = 0; x < cw; x++) {
         let a0 = 0, a1 = 0, a2 = 0, n = 0;
         for (let k = 0; k < hw; k++) {
@@ -497,7 +497,7 @@ function drawBackground(ctx, img, cw, ch, cx, cy, bodyTop, bodyH) {
           a0 += rowacc[sx * 3]; a1 += rowacc[sx * 3 + 1]; a2 += rowacc[sx * 3 + 2]; n++;
         }
         const i = (y * cw + x) * 4;
-        od[i] = a0 / n; od[i + 1] = a1 / n; od[i + 2] = a2 / n; od[i + 3] = 255;
+        od[i] = a0 / n * fade; od[i + 1] = a1 / n * fade; od[i + 2] = a2 / n * fade; od[i + 3] = 255;
       }
     }
     const melt = document.createElement('canvas');
