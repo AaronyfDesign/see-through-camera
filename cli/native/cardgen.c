@@ -993,13 +993,14 @@ static int resolve_profile(const char *dir, const char *body, const char *model,
 #define BODY_TOP_FRAC 0.065
 #define BG_BLUR_FRAC 0.007
 #define BG_RADIAL_HSCALE 2.2
-/* radial zoom blur: number of stacked scaled copies, the max scale, and an
- * inner dead-zone (≈ half body height) where the photo stays untouched —
- * the blur field radiates from the body EDGE outward, so the area right
- * around the camera stays sharp while far detail streaks */
-#define RADIAL_ZOOM_STEPS 20
-#define RADIAL_ZOOM_MAX 1.18
-#define RADIAL_INNER_R_FRAC 0.5
+/* radial bg: photo melts/stretches DOWNWARD from the body's top edge —
+ * rows below the body top are resampled from progressively closer to the
+ * melt line and vertically smeared, so detail pulls into long horizontal
+ * streaks that fade into a smooth gradient (the "pulled/torn" look of the
+ * reference image; NOT a radial mask blur, and no center sharp-spot) */
+#define MELT_MAX_V 14.0
+#define MELT_SMEAR_FRAC 0.018
+#define MELT_HSMEAR_FRAC 0.045
 #define BG_DARKEN 0.72
 #define SCREEN_BRIGHTEN 1.06
 #define LINE1_SIZE 34
@@ -1398,51 +1399,70 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < (size_t)canvas_w * canvas_h; i++)
             memcpy(bg.d + i * 3, avg, 3);
     } else if (!strcmp(bg_mode, "radial")) {
-        /* radial ZOOM BLUR (Photoshop-style): stack N progressively scaled
-         * copies of the photo around the body center and average them —
-         * center stays sharp, detail radiates outward into long streaks,
-         * brightness is preserved. This is the classic "radial blur, zoom"
-         * look, not a mask blur or a single resample. */
-        double cx = bx + bw / 2.0, cy = by + bh / 2.0;
-        double r_in = bh * RADIAL_INNER_R_FRAC;    /* dead-zone: around body */
-        const int N = RADIAL_ZOOM_STEPS;
-        double max_zoom = RADIAL_ZOOM_MAX;
-        double *acc = (double *)calloc((size_t)canvas_w * canvas_h * 3, sizeof(double));
-        int *cnt = (int *)calloc((size_t)canvas_w * canvas_h, sizeof(int));
-        for (int s = 0; s < N; s++) {
-            double z = 1.0 + (max_zoom - 1.0) * (double)s / (N - 1);
-            double k = 1.0 / z;               /* sample radius = k * (p - c) */
-            for (int y = 0; y < canvas_h; y++) {
-                for (int x = 0; x < canvas_w; x++) {
-                    double d = hypot(x - cx, y - cy);
-                    if (d <= r_in)
-                        continue;             /* dead-zone: original pixels */
-                    double sx = cx + (x - cx) * k;
-                    double sy = cy + (y - cy) * k;
-                    if (sx < 0 || sx > canvas_w - 1 || sy < 0 || sy > canvas_h - 1)
-                        continue;             /* outside source: skip frame */
-                    int x0 = (int)sx, y0 = (int)sy;
-                    int x1 = x0 + 1 < canvas_w ? x0 + 1 : x0;
-                    int y1 = y0 + 1 < canvas_h ? y0 + 1 : y0;
-                    double fx = sx - x0, fy = sy - y0;
-                    const unsigned char *p00 = bg.d + ((size_t)y0 * canvas_w + x0) * 3;
-                    const unsigned char *p10 = bg.d + ((size_t)y0 * canvas_w + x1) * 3;
-                    const unsigned char *p01 = bg.d + ((size_t)y1 * canvas_w + x0) * 3;
-                    const unsigned char *p11 = bg.d + ((size_t)y1 * canvas_w + x1) * 3;
-                    double *o = acc + ((size_t)y * canvas_w + x) * 3;
-                    for (int ch = 0; ch < 3; ch++)
-                        o[ch] += p00[ch] * (1 - fx) * (1 - fy) + p10[ch] * fx * (1 - fy)
-                               + p01[ch] * (1 - fx) * fy + p11[ch] * fx * fy;
-                    cnt[(size_t)y * canvas_w + x]++;
+        /* vertical MELT: the photo stays sharp above the body's top edge;
+         * below it, rows are resampled from progressively closer to the melt
+         * line and vertically smeared, so detail pulls into long horizontal
+         * streaks fading into a smooth gradient (reference-image look) */
+        int yb = by;                            /* melt line: body top */
+        int smear = (int)(canvas_h * MELT_SMEAR_FRAC + 0.5);
+        if (smear < 2) smear = 2;
+        int hsmear = (int)(canvas_w * MELT_HSMEAR_FRAC + 0.5);
+        if (hsmear < 2) hsmear = 2;
+        Img out;
+        out.w = canvas_w; out.h = canvas_h; out.c = 3;
+        out.d = (unsigned char *)malloc((size_t)canvas_w * canvas_h * 3);
+        /* row scratch buffer for the horizontal pass */
+        double *rowacc = (double *)malloc((size_t)canvas_w * 3 * sizeof(double));
+        for (int y = 0; y < canvas_h; y++) {
+            if (y < yb) {
+                memcpy(out.d + (size_t)y * canvas_w * 3,
+                       bg.d + (size_t)y * canvas_w * 3,
+                       (size_t)canvas_w * 3);
+                continue;
+            }
+            double depth = (double)(y - yb) / (canvas_h - yb);   /* 0..1 */
+            double v = 1.0 + (MELT_MAX_V - 1.0) * depth * depth; /* stretch grows */
+            int sw = (int)(1 + (smear - 1) * depth + 0.5);       /* vert smear */
+            int hw = (int)(1 + (hsmear - 1) * depth + 0.5);      /* horiz smear */
+            for (int x = 0; x < canvas_w; x++) {
+                double acc[3] = {0, 0, 0};
+                int n = 0;
+                for (int k2 = 0; k2 < sw; k2++) {
+                    double off = (k2 - (sw - 1) / 2.0) / v;
+                    double sy = yb + (y - yb) / v + off;
+                    if (sy < 0) sy = 0;
+                    if (sy > canvas_h - 1) sy = canvas_h - 1;
+                    int sy0 = (int)sy;
+                    const unsigned char *p = bg.d + ((size_t)sy0 * canvas_w + x) * 3;
+                    acc[0] += p[0]; acc[1] += p[1]; acc[2] += p[2];
+                    n++;
                 }
+                rowacc[x * 3 + 0] = acc[0] / n;
+                rowacc[x * 3 + 1] = acc[1] / n;
+                rowacc[x * 3 + 2] = acc[2] / n;
+            }
+            /* horizontal smear pass over the vertically-averaged row */
+            for (int x = 0; x < canvas_w; x++) {
+                double acc[3] = {0, 0, 0};
+                int n = 0;
+                for (int k2 = 0; k2 < hw; k2++) {
+                    int sx = x + (k2 - (hw - 1) / 2);
+                    if (sx < 0) sx = 0;
+                    if (sx > canvas_w - 1) sx = canvas_w - 1;
+                    acc[0] += rowacc[sx * 3 + 0];
+                    acc[1] += rowacc[sx * 3 + 1];
+                    acc[2] += rowacc[sx * 3 + 2];
+                    n++;
+                }
+                unsigned char *o = out.d + ((size_t)y * canvas_w + x) * 3;
+                o[0] = (unsigned char)(acc[0] / n + 0.5);
+                o[1] = (unsigned char)(acc[1] / n + 0.5);
+                o[2] = (unsigned char)(acc[2] / n + 0.5);
             }
         }
-        for (size_t i = 0; i < (size_t)canvas_w * canvas_h; i++) {
-            if (cnt[i] == 0) continue;      /* dead-zone: keep original */
-            for (int ch = 0; ch < 3; ch++)
-                bg.d[i * 3 + ch] = (unsigned char)(acc[i * 3 + ch] / cnt[i] + 0.5);
-        }
-        free(acc); free(cnt);
+        free(rowacc);
+        stbi_image_free(bg.d);
+        bg = out;
     } else { /* soft */
         img_gaussian_blur(&bg, canvas_w * BG_BLUR_FRAC);
     }

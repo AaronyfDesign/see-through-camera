@@ -336,7 +336,7 @@ async function render() {
   const by = topMargin + Math.round((ch - topMargin - textZone - bh) / 2);
 
   // 1. background (needs the body center as the radial-focus point)
-  drawBackground(ctx, img, cw, ch, bx + bw / 2, by + bh / 2, bh);
+  drawBackground(ctx, img, cw, ch, bx + bw / 2, by + bh / 2, by, bh);
 
   // middle layer: screen paste (cover-crop, square corners — the body's
   // bezel masks them), scale vs pre-resize width; per-body zoom falls out
@@ -424,12 +424,12 @@ function drawCoverOverscan(ctx, img, w, h, margin) {
 
 // background modes (state.bgMode):
 //   soft   — uniform gaussian blur + darken (original look, default)
-//   radial — radial ZOOM BLUR: N progressively scaled copies of the photo
-//            averaged around the body center with an inner dead-zone; the
-//            area around the body stays sharp, far detail radiates into
-//            streaks (the classic "radial blur, zoom" look)
+//   radial — vertical MELT: photo stays sharp above the body's top edge;
+//            below it rows are resampled closer to the melt line and smeared
+//            vertically+horizontally, pulling detail into long horizontal
+//            streaks that fade into a smooth gradient (reference look)
 //   solid  — flat fill with the photo's average color (1x1 downsample)
-function drawBackground(ctx, img, cw, ch, cx, cy, bodyH) {
+function drawBackground(ctx, img, cw, ch, cx, cy, bodyTop, bodyH) {
   if (state.bgMode === 'solid') {
     // NB: drawing straight into a 1x1 canvas point-samples in some engines
     // instead of averaging; 8x8 + mean is a real average
@@ -450,64 +450,61 @@ function drawBackground(ctx, img, cw, ch, cx, cy, bodyH) {
     // background away from the body center — near the center content stays
     // sharp, further out each pixel samples closer to the center, so detail
     // stretches into horizontal streaks (the "pulled apart" look), plus a
-    // radial ZOOM BLUR (same as cardgen --bg radial): stack N progressively
-    // scaled copies around the body center and average them; inner dead-zone
-    // (≈ half body height) keeps the area around the camera untouched
-    const N = 20, MAX_ZOOM = 1.18;
-    const rIn = (drawnH) => drawnH * 0.5;
+    // vertical MELT (same as cardgen --bg radial): photo stays sharp above
+    // the body top; below it rows resample closer to the melt line and get
+    // smeared vertically+horizontally, pulling detail into long streaks
+    const MAX_V = 14, VFRAC = 0.018, HFRAC = 0.045;
+    const yb = bodyTop;
+    const smear = Math.max(2, Math.round(ch * VFRAC));
+    const hsmear = Math.max(2, Math.round(cw * HFRAC));
     const base = document.createElement('canvas');
     base.width = cw; base.height = ch;
     drawCoverOverscan(base.getContext('2d'), img, cw, ch, 0);
     const sd = base.getContext('2d').getImageData(0, 0, cw, ch).data;
-    const acc = new Float32Array(cw * ch * 3);
-    const cnt = new Uint16Array(cw * ch);
-    const innerR = rIn(bodyH);
-    for (let s = 0; s < N; s++) {
-      const z = 1 + (MAX_ZOOM - 1) * s / (N - 1);
-      const k = 1 / z;
-      for (let y = 0; y < ch; y++) {
-        const dy = y - cy;
-        for (let x = 0; x < cw; x++) {
-          const dx = x - cx;
-          const d = Math.hypot(dx, dy);
-          if (d <= innerR) continue;      // dead-zone: keep originals
-          let sx = cx + dx * k, sy = cy + dy * k;
-          if (sx < 0 || sx > cw - 1 || sy < 0 || sy > ch - 1) continue;
-          const x0 = sx | 0, y0 = sy | 0;
-          const x1 = x0 + 1 < cw ? x0 + 1 : x0;
-          const y1 = y0 + 1 < ch ? y0 + 1 : y0;
-          const fx = sx - x0, fy = sy - y0;
-          const i00 = (y0 * cw + x0) * 4, i10 = (y0 * cw + x1) * 4;
-          const i01 = (y1 * cw + x0) * 4, i11 = (y1 * cw + x1) * 4;
-          const o = (y * cw + x) * 3;
-          for (let c3 = 0; c3 < 3; c3++) {
-            acc[o + c3] += sd[i00 + c3] * (1 - fx) * (1 - fy)
-                         + sd[i10 + c3] * fx * (1 - fy)
-                         + sd[i01 + c3] * (1 - fx) * fy
-                         + sd[i11 + c3] * fx * fy;
-          }
-          cnt[y * cw + x]++;
-        }
-      }
-    }
     const out = new ImageData(cw, ch);
     const od = out.data;
-    for (let i = 0; i < cw * ch; i++) {
-      if (cnt[i] === 0) {          // dead-zone: copy originals
-        od[i * 4] = sd[i * 4]; od[i * 4 + 1] = sd[i * 4 + 1];
-        od[i * 4 + 2] = sd[i * 4 + 2]; od[i * 4 + 3] = 255;
-      } else {
-        od[i * 4] = acc[i * 3] / cnt[i];
-        od[i * 4 + 1] = acc[i * 3 + 1] / cnt[i];
-        od[i * 4 + 2] = acc[i * 3 + 2] / cnt[i];
-        od[i * 4 + 3] = 255;
+    for (let y = 0; y < ch; y++) {
+      if (y < yb) {
+        for (let x = 0; x < cw; x++) {
+          const i = (y * cw + x) * 4;
+          od[i] = sd[i]; od[i + 1] = sd[i + 1]; od[i + 2] = sd[i + 2]; od[i + 3] = 255;
+        }
+        continue;
+      }
+      const depth = (y - yb) / (ch - yb);
+      const v = 1 + (MAX_V - 1) * depth * depth;
+      const sw = Math.max(1, Math.round(1 + (smear - 1) * depth));
+      const hw = Math.max(1, Math.round(1 + (hsmear - 1) * depth));
+      // vertical pass into rowacc
+      const rowacc = new Float32Array(cw * 3);
+      for (let x = 0; x < cw; x++) {
+        let a0 = 0, a1 = 0, a2 = 0, n = 0;
+        for (let k = 0; k < sw; k++) {
+          const off = (k - (sw - 1) / 2) / v;
+          let sy = yb + (y - yb) / v + off;
+          if (sy < 0) sy = 0; if (sy > ch - 1) sy = ch - 1;
+          const si = ((sy | 0) * cw + x) * 4;
+          a0 += sd[si]; a1 += sd[si + 1]; a2 += sd[si + 2]; n++;
+        }
+        rowacc[x * 3] = a0 / n; rowacc[x * 3 + 1] = a1 / n; rowacc[x * 3 + 2] = a2 / n;
+      }
+      // horizontal smear pass
+      for (let x = 0; x < cw; x++) {
+        let a0 = 0, a1 = 0, a2 = 0, n = 0;
+        for (let k = 0; k < hw; k++) {
+          let sx = x + (k - (hw - 1) / 2);
+          if (sx < 0) sx = 0; if (sx > cw - 1) sx = cw - 1;
+          a0 += rowacc[sx * 3]; a1 += rowacc[sx * 3 + 1]; a2 += rowacc[sx * 3 + 2]; n++;
+        }
+        const i = (y * cw + x) * 4;
+        od[i] = a0 / n; od[i + 1] = a1 / n; od[i + 2] = a2 / n; od[i + 3] = 255;
       }
     }
-    const soft = document.createElement('canvas');
-    soft.width = cw; soft.height = ch;
-    soft.getContext('2d').putImageData(out, 0, 0);
+    const melt = document.createElement('canvas');
+    melt.width = cw; melt.height = ch;
+    melt.getContext('2d').putImageData(out, 0, 0);
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(soft, 0, 0);
+    ctx.drawImage(melt, 0, 0);
   } else { // soft (default)
     if (FILTER_OK) {
       ctx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
