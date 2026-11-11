@@ -993,9 +993,13 @@ static int resolve_profile(const char *dir, const char *body, const char *model,
 #define BODY_TOP_FRAC 0.065
 #define BG_BLUR_FRAC 0.007
 #define BG_RADIAL_HSCALE 2.2
-/* radial zoom-stretch strength: source radius shrinks by 1/(1+k*d);
- * larger = stronger streaks. 1/600 ≈ subtle near center, strong at rim */
-#define RADIAL_STRETCH_K (1.0 / 600.0)
+/* radial zoom blur: number of stacked scaled copies, the max scale, and an
+ * inner dead-zone (≈ half body height) where the photo stays untouched —
+ * the blur field radiates from the body EDGE outward, so the area right
+ * around the camera stays sharp while far detail streaks */
+#define RADIAL_ZOOM_STEPS 20
+#define RADIAL_ZOOM_MAX 1.18
+#define RADIAL_INNER_R_FRAC 0.5
 #define BG_DARKEN 0.72
 #define SCREEN_BRIGHTEN 1.06
 #define LINE1_SIZE 34
@@ -1394,69 +1398,56 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < (size_t)canvas_w * canvas_h; i++)
             memcpy(bg.d + i * 3, avg, 3);
     } else if (!strcmp(bg_mode, "radial")) {
-        /* true radial zoom-stretch: resample the background away from the
-         * body center — content near the center stays sharp, further out
-         * each pixel samples progressively closer to the center, so detail
-         * stretches into horizontal streaks (the "pulled apart" look) */
+        /* radial ZOOM BLUR (Photoshop-style): stack N progressively scaled
+         * copies of the photo around the body center and average them —
+         * center stays sharp, detail radiates outward into long streaks,
+         * brightness is preserved. This is the classic "radial blur, zoom"
+         * look, not a mask blur or a single resample. */
         double cx = bx + bw / 2.0, cy = by + bh / 2.0;
-        double k = RADIAL_STRETCH_K;   /* stretch strength: sample radius shrink */
-        Img out;
-        out.w = canvas_w; out.h = canvas_h; out.c = 3;
-        out.d = (unsigned char *)malloc((size_t)canvas_w * canvas_h * 3);
-        for (int y = 0; y < canvas_h; y++) {
-            for (int x = 0; x < canvas_w; x++) {
-                /* radial pull: source point moves toward the center as
-                 * distance grows: src = c + (p - c) / (1 + k*d) */
-                double dx = x - cx, dy = y - cy;
-                double d = hypot(dx, dy);
-                double f = 1.0 / (1.0 + k * d);
-                double sx = cx + dx * f;
-                double sy = cy + dy * f;
-                if (sx < 0) sx = 0; if (sx > canvas_w - 1) sx = canvas_w - 1;
-                if (sy < 0) sy = 0; if (sy > canvas_h - 1) sy = canvas_h - 1;
-                int x0 = (int)sx, y0 = (int)sy;
-                int x1 = x0 + 1 < canvas_w ? x0 + 1 : x0;
-                int y1 = y0 + 1 < canvas_h ? y0 + 1 : y0;
-                double fx = sx - x0, fy = sy - y0;
-                const unsigned char *p00 = bg.d + ((size_t)y0 * canvas_w + x0) * 3;
-                const unsigned char *p10 = bg.d + ((size_t)y0 * canvas_w + x1) * 3;
-                const unsigned char *p01 = bg.d + ((size_t)y1 * canvas_w + x0) * 3;
-                const unsigned char *p11 = bg.d + ((size_t)y1 * canvas_w + x1) * 3;
-                unsigned char *o = out.d + ((size_t)y * canvas_w + x) * 3;
-                for (int ch = 0; ch < 3; ch++) {
-                    double v = p00[ch] * (1 - fx) * (1 - fy) + p10[ch] * fx * (1 - fy)
-                             + p01[ch] * (1 - fx) * fy + p11[ch] * fx * fy;
-                    o[ch] = (unsigned char)(v + 0.5);
+        double r_in = bh * RADIAL_INNER_R_FRAC;    /* dead-zone: around body */
+        const int N = RADIAL_ZOOM_STEPS;
+        double max_zoom = RADIAL_ZOOM_MAX;
+        double *acc = (double *)calloc((size_t)canvas_w * canvas_h * 3, sizeof(double));
+        int *cnt = (int *)calloc((size_t)canvas_w * canvas_h, sizeof(int));
+        for (int s = 0; s < N; s++) {
+            double z = 1.0 + (max_zoom - 1.0) * (double)s / (N - 1);
+            double k = 1.0 / z;               /* sample radius = k * (p - c) */
+            for (int y = 0; y < canvas_h; y++) {
+                for (int x = 0; x < canvas_w; x++) {
+                    double d = hypot(x - cx, y - cy);
+                    if (d <= r_in)
+                        continue;             /* dead-zone: original pixels */
+                    double sx = cx + (x - cx) * k;
+                    double sy = cy + (y - cy) * k;
+                    if (sx < 0 || sx > canvas_w - 1 || sy < 0 || sy > canvas_h - 1)
+                        continue;             /* outside source: skip frame */
+                    int x0 = (int)sx, y0 = (int)sy;
+                    int x1 = x0 + 1 < canvas_w ? x0 + 1 : x0;
+                    int y1 = y0 + 1 < canvas_h ? y0 + 1 : y0;
+                    double fx = sx - x0, fy = sy - y0;
+                    const unsigned char *p00 = bg.d + ((size_t)y0 * canvas_w + x0) * 3;
+                    const unsigned char *p10 = bg.d + ((size_t)y0 * canvas_w + x1) * 3;
+                    const unsigned char *p01 = bg.d + ((size_t)y1 * canvas_w + x0) * 3;
+                    const unsigned char *p11 = bg.d + ((size_t)y1 * canvas_w + x1) * 3;
+                    double *o = acc + ((size_t)y * canvas_w + x) * 3;
+                    for (int ch = 0; ch < 3; ch++)
+                        o[ch] += p00[ch] * (1 - fx) * (1 - fy) + p10[ch] * fx * (1 - fy)
+                               + p01[ch] * (1 - fx) * fy + p11[ch] * fx * fy;
+                    cnt[(size_t)y * canvas_w + x]++;
                 }
             }
         }
-        stbi_image_free(bg.d);
-        bg = out;
-        /* gentle distance-weighted soften on top of the stretch so rim
-         * streaks read as smooth silk rather than raw resampling */
-        {
-            Img soft;
-            soft.w = canvas_w; soft.h = canvas_h; soft.c = 3;
-            soft.d = (unsigned char *)malloc((size_t)canvas_w * canvas_h * 3);
-            memcpy(soft.d, bg.d, (size_t)canvas_w * canvas_h * 3);
-            img_gaussian_blur(&soft, canvas_w * 0.004);
-            for (int y = 0; y < canvas_h; y++)
-                for (int x = 0; x < canvas_w; x++) {
-                    double d = hypot(x - cx, y - cy);
-                    double t = (d / canvas_w - 0.25) / 0.45;
-                    if (t < 0) t = 0; if (t > 1) t = 1;
-                    int m = (int)(255 * t + 0.5);
-                    unsigned char *s = soft.d + ((size_t)y * canvas_w + x) * 3;
-                    unsigned char *g2 = bg.d + ((size_t)y * canvas_w + x) * 3;
-                    for (int ch = 0; ch < 3; ch++)
-                        g2[ch] = (unsigned char)((s[ch] * m + g2[ch] * (255 - m) + 127) / 255);
-                }
-            free(soft.d);
+        for (size_t i = 0; i < (size_t)canvas_w * canvas_h; i++) {
+            if (cnt[i] == 0) continue;      /* dead-zone: keep original */
+            for (int ch = 0; ch < 3; ch++)
+                bg.d[i * 3 + ch] = (unsigned char)(acc[i * 3 + ch] / cnt[i] + 0.5);
         }
+        free(acc); free(cnt);
     } else { /* soft */
         img_gaussian_blur(&bg, canvas_w * BG_BLUR_FRAC);
     }
-    img_brightness(&bg, BG_DARKEN);
+    if (strcmp(bg_mode, "radial") != 0)
+        img_brightness(&bg, BG_DARKEN);
     memcpy(canvas.d, bg.d, (size_t)canvas_w * canvas_h * 3);
     stbi_image_free(bg.d);
 

@@ -336,7 +336,7 @@ async function render() {
   const by = topMargin + Math.round((ch - topMargin - textZone - bh) / 2);
 
   // 1. background (needs the body center as the radial-focus point)
-  drawBackground(ctx, img, cw, ch, bx + bw / 2, by + bh / 2);
+  drawBackground(ctx, img, cw, ch, bx + bw / 2, by + bh / 2, bh);
 
   // middle layer: screen paste (cover-crop, square corners — the body's
   // bezel masks them), scale vs pre-resize width; per-body zoom falls out
@@ -424,10 +424,12 @@ function drawCoverOverscan(ctx, img, w, h, margin) {
 
 // background modes (state.bgMode):
 //   soft   — uniform gaussian blur + darken (original look, default)
-//   radial — sharp base, blur layer masked by a radial gradient centered on
-//            the body: clear behind the body, blur grows toward the edges
+//   radial — radial ZOOM BLUR: N progressively scaled copies of the photo
+//            averaged around the body center with an inner dead-zone; the
+//            area around the body stays sharp, far detail radiates into
+//            streaks (the classic "radial blur, zoom" look)
 //   solid  — flat fill with the photo's average color (1x1 downsample)
-function drawBackground(ctx, img, cw, ch, cx, cy) {
+function drawBackground(ctx, img, cw, ch, cx, cy, bodyH) {
   if (state.bgMode === 'solid') {
     // NB: drawing straight into a 1x1 canvas point-samples in some engines
     // instead of averaging; 8x8 + mean is a real average
@@ -448,76 +450,64 @@ function drawBackground(ctx, img, cw, ch, cx, cy) {
     // background away from the body center — near the center content stays
     // sharp, further out each pixel samples closer to the center, so detail
     // stretches into horizontal streaks (the "pulled apart" look), plus a
-    // gentle distance-weighted soften so rim streaks read as smooth silk
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    // radial ZOOM BLUR (same as cardgen --bg radial): stack N progressively
+    // scaled copies around the body center and average them; inner dead-zone
+    // (≈ half body height) keeps the area around the camera untouched
+    const N = 20, MAX_ZOOM = 1.18;
+    const rIn = (drawnH) => drawnH * 0.5;
     const base = document.createElement('canvas');
     base.width = cw; base.height = ch;
     drawCoverOverscan(base.getContext('2d'), img, cw, ch, 0);
-    const K = 1 / 600;
-    const src = base.getContext('2d').getImageData(0, 0, cw, ch);
-    const out = new ImageData(cw, ch);
-    const sd = src.data, od = out.data;
-    for (let y = 0; y < ch; y++) {
-      const dy = y - cy;
-      for (let x = 0; x < cw; x++) {
-        const dx = x - cx;
-        const d = Math.hypot(dx, dy);
-        const f = 1 / (1 + K * d);
-        let sx = cx + dx * f, sy = cy + dy * f;
-        if (sx < 0) sx = 0; if (sx > cw - 1) sx = cw - 1;
-        if (sy < 0) sy = 0; if (sy > ch - 1) sy = ch - 1;
-        const x0 = sx | 0, y0 = sy | 0;
-        const x1 = x0 + 1 < cw ? x0 + 1 : x0;
-        const y1 = y0 + 1 < ch ? y0 + 1 : y0;
-        const fx = sx - x0, fy = sy - y0;
-        const i00 = (y0 * cw + x0) * 4, i10 = (y0 * cw + x1) * 4;
-        const i01 = (y1 * cw + x0) * 4, i11 = (y1 * cw + x1) * 4;
-        const o = (y * cw + x) * 4;
-        for (let ch4 = 0; ch4 < 3; ch4++) {
-          od[o + ch4] = sd[i00 + ch4] * (1 - fx) * (1 - fy)
-                      + sd[i10 + ch4] * fx * (1 - fy)
-                      + sd[i01 + ch4] * (1 - fx) * fy
-                      + sd[i11 + ch4] * fx * fy;
+    const sd = base.getContext('2d').getImageData(0, 0, cw, ch).data;
+    const acc = new Float32Array(cw * ch * 3);
+    const cnt = new Uint16Array(cw * ch);
+    const innerR = rIn(bodyH);
+    for (let s = 0; s < N; s++) {
+      const z = 1 + (MAX_ZOOM - 1) * s / (N - 1);
+      const k = 1 / z;
+      for (let y = 0; y < ch; y++) {
+        const dy = y - cy;
+        for (let x = 0; x < cw; x++) {
+          const dx = x - cx;
+          const d = Math.hypot(dx, dy);
+          if (d <= innerR) continue;      // dead-zone: keep originals
+          let sx = cx + dx * k, sy = cy + dy * k;
+          if (sx < 0 || sx > cw - 1 || sy < 0 || sy > ch - 1) continue;
+          const x0 = sx | 0, y0 = sy | 0;
+          const x1 = x0 + 1 < cw ? x0 + 1 : x0;
+          const y1 = y0 + 1 < ch ? y0 + 1 : y0;
+          const fx = sx - x0, fy = sy - y0;
+          const i00 = (y0 * cw + x0) * 4, i10 = (y0 * cw + x1) * 4;
+          const i01 = (y1 * cw + x0) * 4, i11 = (y1 * cw + x1) * 4;
+          const o = (y * cw + x) * 3;
+          for (let c3 = 0; c3 < 3; c3++) {
+            acc[o + c3] += sd[i00 + c3] * (1 - fx) * (1 - fy)
+                         + sd[i10 + c3] * fx * (1 - fy)
+                         + sd[i01 + c3] * (1 - fx) * fy
+                         + sd[i11 + c3] * fx * fy;
+          }
+          cnt[y * cw + x]++;
         }
-        od[o + 3] = 255;
       }
     }
-    // distance-weighted soften: blur copy blended in by radius
+    const out = new ImageData(cw, ch);
+    const od = out.data;
+    for (let i = 0; i < cw * ch; i++) {
+      if (cnt[i] === 0) {          // dead-zone: copy originals
+        od[i * 4] = sd[i * 4]; od[i * 4 + 1] = sd[i * 4 + 1];
+        od[i * 4 + 2] = sd[i * 4 + 2]; od[i * 4 + 3] = 255;
+      } else {
+        od[i * 4] = acc[i * 3] / cnt[i];
+        od[i * 4 + 1] = acc[i * 3 + 1] / cnt[i];
+        od[i * 4 + 2] = acc[i * 3 + 2] / cnt[i];
+        od[i * 4 + 3] = 255;
+      }
+    }
     const soft = document.createElement('canvas');
     soft.width = cw; soft.height = ch;
-    const sctx = soft.getContext('2d');
-    sctx.imageSmoothingQuality = 'high';
-    sctx.putImageData(out, 0, 0);
-    const blurC = document.createElement('canvas');
-    blurC.width = cw; blurC.height = ch;
-    const bctx = blurC.getContext('2d');
-    if (FILTER_OK) {
-      bctx.filter = `blur(${cw * 0.004}px)`;
-      bctx.drawImage(soft, 0, 0);
-      bctx.filter = 'none';
-    } else {
-      bctx.drawImage(soft, 0, 0);
-    }
-    const bl = document.createElement(`canvas`).getContext(`2d`);
-    const rad = bl.createRadialGradient(cx, cy, 0, cx, cy, Math.max(cw, ch));
-    rad.addColorStop(0, 'rgba(0,0,0,0)');
-    rad.addColorStop(0.25, 'rgba(0,0,0,0)');
-    rad.addColorStop(0.7, 'rgba(0,0,0,1)');
-    // stretched base first...
-    bl.drawImage(soft, 0, 0);
+    soft.getContext('2d').putImageData(out, 0, 0);
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(soft, 0, 0);
-    // ...then the blurred rim, masked by the same radial weights (single pass)
-    const mix = document.createElement('canvas');
-    mix.width = cw; mix.height = ch;
-    const mctx = mix.getContext('2d');
-    mctx.drawImage(blurC, 0, 0);
-    mctx.globalCompositeOperation = 'destination-in';
-    mctx.fillStyle = rad;
-    mctx.fillRect(0, 0, cw, ch);
-    mctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(mix, 0, 0);
   } else { // soft (default)
     if (FILTER_OK) {
       ctx.filter = `blur(${cw * BG_BLUR_FRAC}px)`;
@@ -527,8 +517,10 @@ function drawBackground(ctx, img, cw, ch, cx, cy) {
       drawCoverBlurFallback(ctx, img, cw, ch);
     }
   }
-  ctx.fillStyle = `rgba(0,0,0,${1 - BG_DARKEN})`;
-  ctx.fillRect(0, 0, cw, ch);
+  if (state.bgMode !== 'radial') {
+    ctx.fillStyle = `rgba(0,0,0,${1 - BG_DARKEN})`;
+    ctx.fillRect(0, 0, cw, ch);
+  }
 }
 
 // ---------- errors ----------
